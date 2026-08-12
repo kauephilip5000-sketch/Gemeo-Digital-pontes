@@ -101,7 +101,7 @@ def mostrar_modulo_fotografias(
 
 
     # ========================================================
-    # FORMULÁRIO
+    # FORMULÁRIO DE REGISTRO FOTOGRÁFICO
     # ========================================================
 
     with st.form(
@@ -296,6 +296,50 @@ def mostrar_modulo_fotografias(
     )
 
 
+    # ========================================================
+    # CONTROLE DO QUANTITATIVO MÍNIMO
+    # ========================================================
+
+    if inspecao_ativa.tipo_inspecao in [
+        "Cadastral",
+        "Rotineira"
+    ]:
+
+        minimo_fotos = 8
+
+        if quantidade_fotos < minimo_fotos:
+
+            faltam = (
+                minimo_fotos - quantidade_fotos
+            )
+
+            st.warning(
+                f"Foram cadastrados {quantidade_fotos} "
+                f"de {minimo_fotos} registros fotográficos. "
+                f"Faltam pelo menos {faltam} registro(s) "
+                f"para atingir o mínimo indicado na ficha "
+                f"da ABNT NBR 9452:2023."
+            )
+
+        else:
+
+            st.success(
+                f"Quantitativo mínimo atendido: "
+                f"{quantidade_fotos} registros fotográficos."
+            )
+
+    else:
+
+        st.info(
+            "Para este tipo de inspeção, o sistema não aplica "
+            "automaticamente a regra de mínimo de oito registros."
+        )
+
+
+    # ========================================================
+    # EXIBIÇÃO DAS FOTOGRAFIAS
+    # ========================================================
+
     if quantidade_fotos == 0:
 
         st.info(
@@ -321,6 +365,20 @@ def mostrar_modulo_fotografias(
                 f"**Tipo:** "
                 f"{fotografia.tipo_registro}"
             )
+
+            if fotografia.anomalia_id is not None:
+
+                st.write(
+                    f"**Anomalia relacionada:** "
+                    f"ID {fotografia.anomalia_id}"
+                )
+
+            else:
+
+                st.write(
+                    "**Anomalia relacionada:** "
+                    "Nenhuma"
+                )
 
             caminho = Path(
                 fotografia.caminho_arquivo
