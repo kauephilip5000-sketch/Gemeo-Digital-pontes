@@ -235,3 +235,118 @@ else:
     st.write("Município:", oae_ativa.municipio)
     st.write("UF:", oae_ativa.uf)
     st.write("Tipo estrutural:", oae_ativa.tipo_estrutura)
+
+    st.divider()
+
+    st.header("Cadastro de componente")
+
+    st.write(
+        f"Componente vinculado à OAE: "
+        f"{oae_ativa.id} - {oae_ativa.nome}"
+    )
+
+    with st.form("form_cadastro_componente"):
+
+        categoria_componente = st.selectbox(
+            "Categoria do componente",
+            [
+                "Superestrutura",
+                "Mesoestrutura",
+                "Infraestrutura",
+                "Elementos de encontro"
+            ]
+        )
+
+        nome_componente = st.text_input(
+            "Nome ou identificação do elemento"
+        )
+
+        classificacao_elemento = st.selectbox(
+            "Classificação do elemento",
+            [
+                "Principal",
+                "Secundário",
+                "Complementar",
+                "Não informado"
+            ]
+        )
+
+        observacoes_componente = st.text_area(
+            "Observações do componente"
+        )
+
+        salvar_componente = st.form_submit_button(
+            "Salvar componente"
+        )
+
+    if salvar_componente:
+
+        if nome_componente == "":
+            st.error(
+                "O nome ou identificação do componente é obrigatório."
+            )
+
+        else:
+            db = SessionLocal()
+
+            novo_componente = models.Componente(
+                oae_id=oae_ativa.id,
+                categoria=categoria_componente,
+                nome=nome_componente,
+                classificacao_elemento=classificacao_elemento,
+                observacoes=observacoes_componente
+            )
+
+            db.add(novo_componente)
+            db.commit()
+            db.refresh(novo_componente)
+
+            componente_id = novo_componente.id
+
+            db.close()
+
+            st.success(
+                f"Componente cadastrado com sucesso. "
+                f"ID gerado: {componente_id}"
+            )
+    st.divider()
+
+    st.header("Componentes cadastrados da OAE ativa")
+
+    db = SessionLocal()
+
+    componentes = db.query(
+        models.Componente
+    ).filter(
+        models.Componente.oae_id == oae_ativa.id
+    ).order_by(
+        models.Componente.id
+    ).all()
+
+    db.close()
+
+    if len(componentes) == 0:
+
+        st.info(
+            "Nenhum componente cadastrado para esta OAE."
+        )
+
+    else:
+
+        dados_componentes = []
+
+        for componente in componentes:
+            dados_componentes.append(
+                {
+                    "ID": componente.id,
+                    "Categoria": componente.categoria,
+                    "Elemento": componente.nome,
+                    "Classificação": componente.classificacao_elemento,
+                    "Observações": componente.observacoes
+                }
+            )
+
+        st.dataframe(
+            dados_componentes,
+            width="stretch"
+        )
