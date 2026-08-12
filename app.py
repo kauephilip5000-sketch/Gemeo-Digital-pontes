@@ -1,4 +1,8 @@
 import streamlit as st
+from database import engine, Base, SessionLocal
+import models
+
+Base.metadata.create_all(bind=engine)
 
 st.set_page_config(
     page_title="Gêmeo Digital - Pontes",
@@ -113,9 +117,36 @@ if enviar:
         st.error("O nome da OAE é obrigatório.")
 
     else:
-        st.success("Cadastro recebido com sucesso.")
+        db = SessionLocal()
 
-        st.write("### Dados informados")
+        nova_oae = models.OAE(
+            nome=nome_oae,
+            codigo=codigo_oae,
+            rodovia=rodovia,
+            municipio=municipio,
+            uf=uf,
+            ano_construcao=ano_construcao,
+            tipo_estrutura=tipo_estrutura,
+            numero_vaos=numero_vaos,
+            comprimento_total=comprimento_total,
+            largura=largura,
+            tipo_protensao=tipo_protensao,
+            observacoes=observacoes
+        )
+
+        db.add(nova_oae)
+        db.commit()
+        db.refresh(nova_oae)
+
+        id_gerado = nova_oae.id
+
+        db.close()
+
+        st.success(
+            f"OAE cadastrada com sucesso. ID gerado: {id_gerado}"
+        )
+
+        st.write("### Dados cadastrados")
 
         st.write("Nome da OAE:", nome_oae)
         st.write("Código:", codigo_oae)
@@ -129,3 +160,24 @@ if enviar:
         st.write("Largura:", largura, "m")
         st.write("Tipo de protensão:", tipo_protensao)
         st.write("Observações:", observacoes)
+st.divider()
+
+st.header("OAEs cadastradas")
+
+db = SessionLocal()
+
+oaes = db.query(models.OAE).all()
+
+db.close()
+
+if len(oaes) == 0:
+    st.info("Nenhuma OAE cadastrada.")
+
+else:
+    for oae in oaes:
+        st.write(
+            f"ID: {oae.id} | "
+            f"Nome: {oae.nome} | "
+            f"Código: {oae.codigo} | "
+            f"Município: {oae.municipio} - {oae.uf}"
+        )
