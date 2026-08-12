@@ -5,7 +5,7 @@ import models
 
 
 # ============================================================
-# CRIAÇÃO DAS TABELAS DO BANCO
+# BANCO DE DADOS
 # ============================================================
 
 Base.metadata.create_all(bind=engine)
@@ -44,7 +44,7 @@ st.divider()
 
 
 # ============================================================
-# FUNCIONALIDADES PREVISTAS
+# FUNCIONALIDADES
 # ============================================================
 
 st.header("Funcionalidades previstas")
@@ -53,10 +53,10 @@ st.write("✅ Cadastro da OAE")
 st.write("✅ Cadastro dos componentes estruturais")
 st.write("✅ Registro de inspeções")
 st.write("✅ Registro de anomalias")
-st.write("✅ Armazenamento de fotografias")
 st.write("✅ Classificação estrutural, funcional e de durabilidade")
-st.write("✅ Histórico das inspeções")
-st.write("✅ Emissão de relatórios")
+st.write("⬜ Armazenamento de fotografias")
+st.write("⬜ Histórico das inspeções")
+st.write("⬜ Emissão de relatórios")
 
 st.divider()
 
@@ -155,10 +155,6 @@ with st.form("form_cadastro_oae"):
     )
 
 
-# ============================================================
-# SALVAR OAE
-# ============================================================
-
 if enviar:
 
     if nome_oae == "":
@@ -187,9 +183,7 @@ if enviar:
         )
 
         db.add(nova_oae)
-
         db.commit()
-
         db.refresh(nova_oae)
 
         id_gerado = nova_oae.id
@@ -253,7 +247,7 @@ else:
 
 
     # ========================================================
-    # SELEÇÃO DA OAE ATIVA
+    # OAE ATIVA
     # ========================================================
 
     st.subheader(
@@ -282,35 +276,12 @@ else:
         "### Dados da OAE selecionada"
     )
 
-    st.write(
-        "ID:",
-        oae_ativa.id
-    )
-
-    st.write(
-        "Nome:",
-        oae_ativa.nome
-    )
-
-    st.write(
-        "Código:",
-        oae_ativa.codigo
-    )
-
-    st.write(
-        "Rodovia:",
-        oae_ativa.rodovia
-    )
-
-    st.write(
-        "Município:",
-        oae_ativa.municipio
-    )
-
-    st.write(
-        "UF:",
-        oae_ativa.uf
-    )
+    st.write("ID:", oae_ativa.id)
+    st.write("Nome:", oae_ativa.nome)
+    st.write("Código:", oae_ativa.codigo)
+    st.write("Rodovia:", oae_ativa.rodovia)
+    st.write("Município:", oae_ativa.municipio)
+    st.write("UF:", oae_ativa.uf)
 
     st.write(
         "Tipo estrutural:",
@@ -370,17 +341,12 @@ else:
         )
 
 
-    # ========================================================
-    # SALVAR COMPONENTE
-    # ========================================================
-
     if salvar_componente:
 
         if nome_componente == "":
 
             st.error(
-                "O nome ou identificação "
-                "do componente é obrigatório."
+                "O nome ou identificação do componente é obrigatório."
             )
 
         else:
@@ -395,19 +361,11 @@ else:
                 observacoes=observacoes_componente
             )
 
-            db.add(
-                novo_componente
-            )
-
+            db.add(novo_componente)
             db.commit()
+            db.refresh(novo_componente)
 
-            db.refresh(
-                novo_componente
-            )
-
-            componente_id = (
-                novo_componente.id
-            )
+            componente_id = novo_componente.id
 
             db.close()
 
@@ -444,12 +402,13 @@ else:
 
     db.close()
 
+    componente_ativo = None
+
 
     if len(componentes) == 0:
 
         st.info(
-            "Nenhum componente cadastrado "
-            "para esta OAE."
+            "Nenhum componente cadastrado para esta OAE."
         )
 
     else:
@@ -474,11 +433,6 @@ else:
             dados_componentes,
             width="stretch"
         )
-
-
-        # ====================================================
-        # COMPONENTE ATIVO
-        # ====================================================
 
         st.subheader(
             "Selecionar componente ativo"
@@ -590,10 +544,6 @@ else:
         )
 
 
-    # ========================================================
-    # SALVAR INSPEÇÃO
-    # ========================================================
-
     if salvar_inspecao:
 
         db = SessionLocal()
@@ -607,19 +557,11 @@ else:
             observacoes=observacoes_inspecao
         )
 
-        db.add(
-            nova_inspecao
-        )
-
+        db.add(nova_inspecao)
         db.commit()
+        db.refresh(nova_inspecao)
 
-        db.refresh(
-            nova_inspecao
-        )
-
-        inspecao_id = (
-            nova_inspecao.id
-        )
+        inspecao_id = nova_inspecao.id
 
         db.close()
 
@@ -656,12 +598,13 @@ else:
 
     db.close()
 
+    inspecao_ativa = None
+
 
     if len(inspecoes) == 0:
 
         st.info(
-            "Nenhuma inspeção cadastrada "
-            "para esta OAE."
+            "Nenhuma inspeção cadastrada para esta OAE."
         )
 
     else:
@@ -673,7 +616,8 @@ else:
             dados_inspecoes.append(
                 {
                     "ID": inspecao.id,
-                    "Tipo": inspecao.tipo_inspecao,
+                    "Tipo":
+                        inspecao.tipo_inspecao,
                     "Data":
                         inspecao.data_inspecao.strftime(
                             "%d/%m/%Y"
@@ -691,11 +635,6 @@ else:
             dados_inspecoes,
             width="stretch"
         )
-
-
-        # ====================================================
-        # INSPEÇÃO ATIVA
-        # ====================================================
 
         st.subheader(
             "Selecionar inspeção ativa"
@@ -764,3 +703,380 @@ else:
             "Observações:",
             inspecao_ativa.observacoes
         )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # ANOMALIAS
+    # ========================================================
+
+    st.header(
+        "Cadastro de anomalia"
+    )
+
+    if componente_ativo is None:
+
+        st.warning(
+            "Cadastre e selecione um componente antes "
+            "de registrar uma anomalia."
+        )
+
+    elif inspecao_ativa is None:
+
+        st.warning(
+            "Cadastre e selecione uma inspeção antes "
+            "de registrar uma anomalia."
+        )
+
+    else:
+
+        st.write(
+            f"OAE: {oae_ativa.nome}"
+        )
+
+        st.write(
+            f"Inspeção: "
+            f"{inspecao_ativa.tipo_inspecao} - "
+            f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
+        )
+
+        st.write(
+            f"Componente: {componente_ativo.nome}"
+        )
+
+        with st.form(
+            "form_cadastro_anomalia"
+        ):
+
+            tipo_anomalia = st.text_input(
+                "Tipo de anomalia"
+            )
+
+            localizacao_anomalia = st.text_input(
+                "Localização da anomalia no elemento"
+            )
+
+            descricao_anomalia = st.text_area(
+                "Descrição da anomalia"
+            )
+
+            observacoes_anomalia = st.text_area(
+                "Observações da anomalia"
+            )
+
+            salvar_anomalia = st.form_submit_button(
+                "Salvar anomalia"
+            )
+
+
+        if salvar_anomalia:
+
+            if tipo_anomalia == "":
+
+                st.error(
+                    "O tipo de anomalia é obrigatório."
+                )
+
+            else:
+
+                db = SessionLocal()
+
+                nova_anomalia = models.Anomalia(
+                    oae_id=oae_ativa.id,
+                    inspecao_id=inspecao_ativa.id,
+                    componente_id=componente_ativo.id,
+                    tipo_anomalia=tipo_anomalia,
+                    descricao=descricao_anomalia,
+                    localizacao=localizacao_anomalia,
+                    observacoes=observacoes_anomalia
+                )
+
+                db.add(nova_anomalia)
+                db.commit()
+                db.refresh(nova_anomalia)
+
+                anomalia_id = nova_anomalia.id
+
+                db.close()
+
+                st.success(
+                    f"Anomalia cadastrada com sucesso. "
+                    f"ID gerado: {anomalia_id}"
+                )
+
+
+        st.subheader(
+            "Anomalias cadastradas"
+        )
+
+        db = SessionLocal()
+
+        anomalias = (
+            db.query(models.Anomalia)
+            .filter(
+                models.Anomalia.oae_id
+                == oae_ativa.id
+            )
+            .filter(
+                models.Anomalia.inspecao_id
+                == inspecao_ativa.id
+            )
+            .filter(
+                models.Anomalia.componente_id
+                == componente_ativo.id
+            )
+            .order_by(
+                models.Anomalia.id
+            )
+            .all()
+        )
+
+        db.close()
+
+
+        if len(anomalias) == 0:
+
+            st.info(
+                "Nenhuma anomalia cadastrada para "
+                "esta inspeção e componente."
+            )
+
+        else:
+
+            dados_anomalias = []
+
+            for anomalia in anomalias:
+
+                dados_anomalias.append(
+                    {
+                        "ID": anomalia.id,
+                        "Tipo":
+                            anomalia.tipo_anomalia,
+                        "Localização":
+                            anomalia.localizacao,
+                        "Descrição":
+                            anomalia.descricao,
+                        "Observações":
+                            anomalia.observacoes
+                    }
+                )
+
+            st.dataframe(
+                dados_anomalias,
+                width="stretch"
+            )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # CLASSIFICAÇÃO NBR 9452
+    # ========================================================
+
+    st.header(
+        "Classificação da condição"
+    )
+
+    if componente_ativo is None:
+
+        st.warning(
+            "Selecione um componente para realizar "
+            "a classificação."
+        )
+
+    elif inspecao_ativa is None:
+
+        st.warning(
+            "Selecione uma inspeção para realizar "
+            "a classificação."
+        )
+
+    else:
+
+        st.info(
+            "As notas devem ser atribuídas pelo inspetor "
+            "responsável, com base nos critérios da "
+            "ABNT NBR 9452:2023."
+        )
+
+        st.write(
+            f"Componente avaliado: "
+            f"{componente_ativo.nome}"
+        )
+
+        st.write(
+            f"Inspeção: "
+            f"{inspecao_ativa.tipo_inspecao} - "
+            f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
+        )
+
+        opcoes_notas = [
+            "5 - Excelente",
+            "4 - Boa",
+            "3 - Regular",
+            "2 - Ruim",
+            "1 - Crítica",
+            "0 - Emergencial"
+        ]
+
+        with st.form(
+            "form_classificacao"
+        ):
+
+            nota_estrutural_texto = st.selectbox(
+                "Nota estrutural",
+                opcoes_notas
+            )
+
+            justificativa_estrutural = st.text_area(
+                "Justificativa da nota estrutural"
+            )
+
+            nota_funcional_texto = st.selectbox(
+                "Nota funcional",
+                opcoes_notas
+            )
+
+            justificativa_funcional = st.text_area(
+                "Justificativa da nota funcional"
+            )
+
+            nota_durabilidade_texto = st.selectbox(
+                "Nota de durabilidade",
+                opcoes_notas
+            )
+
+            justificativa_durabilidade = st.text_area(
+                "Justificativa da nota de durabilidade"
+            )
+
+            salvar_classificacao = st.form_submit_button(
+                "Salvar classificação"
+            )
+
+
+        if salvar_classificacao:
+
+            nota_estrutural = int(
+                nota_estrutural_texto[0]
+            )
+
+            nota_funcional = int(
+                nota_funcional_texto[0]
+            )
+
+            nota_durabilidade = int(
+                nota_durabilidade_texto[0]
+            )
+
+            db = SessionLocal()
+
+            nova_classificacao = models.Classificacao(
+                oae_id=oae_ativa.id,
+                inspecao_id=inspecao_ativa.id,
+                componente_id=componente_ativo.id,
+                nota_estrutural=nota_estrutural,
+                justificativa_estrutural=
+                    justificativa_estrutural,
+                nota_funcional=nota_funcional,
+                justificativa_funcional=
+                    justificativa_funcional,
+                nota_durabilidade=nota_durabilidade,
+                justificativa_durabilidade=
+                    justificativa_durabilidade
+            )
+
+            db.add(
+                nova_classificacao
+            )
+
+            db.commit()
+
+            db.refresh(
+                nova_classificacao
+            )
+
+            classificacao_id = (
+                nova_classificacao.id
+            )
+
+            db.close()
+
+            st.success(
+                f"Classificação cadastrada com sucesso. "
+                f"ID gerado: {classificacao_id}"
+            )
+
+
+        # ====================================================
+        # CLASSIFICAÇÕES REGISTRADAS
+        # ====================================================
+
+        st.subheader(
+            "Classificações registradas"
+        )
+
+        db = SessionLocal()
+
+        classificacoes = (
+            db.query(models.Classificacao)
+            .filter(
+                models.Classificacao.oae_id
+                == oae_ativa.id
+            )
+            .filter(
+                models.Classificacao.inspecao_id
+                == inspecao_ativa.id
+            )
+            .filter(
+                models.Classificacao.componente_id
+                == componente_ativo.id
+            )
+            .order_by(
+                models.Classificacao.id
+            )
+            .all()
+        )
+
+        db.close()
+
+
+        if len(classificacoes) == 0:
+
+            st.info(
+                "Nenhuma classificação registrada para "
+                "este componente nesta inspeção."
+            )
+
+        else:
+
+            dados_classificacoes = []
+
+            for classificacao in classificacoes:
+
+                dados_classificacoes.append(
+                    {
+                        "ID":
+                            classificacao.id,
+                        "Estrutural":
+                            classificacao.nota_estrutural,
+                        "Funcional":
+                            classificacao.nota_funcional,
+                        "Durabilidade":
+                            classificacao.nota_durabilidade,
+                        "Justificativa estrutural":
+                            classificacao.justificativa_estrutural,
+                        "Justificativa funcional":
+                            classificacao.justificativa_funcional,
+                        "Justificativa de durabilidade":
+                            classificacao.justificativa_durabilidade
+                    }
+                )
+
+            st.dataframe(
+                dados_classificacoes,
+                width="stretch"
+            )

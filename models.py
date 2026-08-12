@@ -1,6 +1,19 @@
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, Date
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Text,
+    ForeignKey,
+    Date
+)
+
 from database import Base
 
+
+# ============================================================
+# OAE
+# ============================================================
 
 class OAE(Base):
     __tablename__ = "oae"
@@ -26,6 +39,10 @@ class OAE(Base):
 
     observacoes = Column(Text, nullable=True)
 
+
+# ============================================================
+# COMPONENTES
+# ============================================================
 
 class Componente(Base):
     __tablename__ = "componentes"
@@ -59,6 +76,10 @@ class Componente(Base):
     )
 
 
+# ============================================================
+# INSPEÇÕES
+# ============================================================
+
 class Inspecao(Base):
     __tablename__ = "inspecoes"
 
@@ -91,6 +112,112 @@ class Inspecao(Base):
     )
 
     observacoes = Column(
+        Text,
+        nullable=True
+    )
+
+
+# ============================================================
+# ANOMALIAS
+# ============================================================
+
+class Anomalia(Base):
+    __tablename__ = "anomalias"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    oae_id = Column(
+        Integer,
+        ForeignKey("oae.id"),
+        nullable=False
+    )
+
+    inspecao_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False
+    )
+
+    componente_id = Column(
+        Integer,
+        ForeignKey("componentes.id"),
+        nullable=False
+    )
+
+    tipo_anomalia = Column(
+        String,
+        nullable=False
+    )
+
+    descricao = Column(
+        Text,
+        nullable=True
+    )
+
+    localizacao = Column(
+        String,
+        nullable=True
+    )
+
+    observacoes = Column(
+        Text,
+        nullable=True
+    )
+
+
+# ============================================================
+# CLASSIFICAÇÕES
+# ============================================================
+
+class Classificacao(Base):
+    __tablename__ = "classificacoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    oae_id = Column(
+        Integer,
+        ForeignKey("oae.id"),
+        nullable=False
+    )
+
+    inspecao_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False
+    )
+
+    componente_id = Column(
+        Integer,
+        ForeignKey("componentes.id"),
+        nullable=False
+    )
+
+    nota_estrutural = Column(
+        Integer,
+        nullable=False
+    )
+
+    justificativa_estrutural = Column(
+        Text,
+        nullable=True
+    )
+
+    nota_funcional = Column(
+        Integer,
+        nullable=False
+    )
+
+    justificativa_funcional = Column(
+        Text,
+        nullable=True
+    )
+
+    nota_durabilidade = Column(
+        Integer,
+        nullable=False
+    )
+
+    justificativa_durabilidade = Column(
         Text,
         nullable=True
     )
