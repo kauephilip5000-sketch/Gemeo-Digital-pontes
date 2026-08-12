@@ -309,6 +309,7 @@ else:
                 f"Componente cadastrado com sucesso. "
                 f"ID gerado: {componente_id}"
             )
+
     st.divider()
 
     st.header("Componentes cadastrados da OAE ativa")
@@ -349,4 +350,51 @@ else:
         st.dataframe(
             dados_componentes,
             width="stretch"
+        )
+
+        st.subheader("Selecionar componente ativo")
+
+        opcoes_componentes = {
+            f"{componente.id} - {componente.nome}": componente
+            for componente in componentes
+        }
+
+        componente_escolhido = st.selectbox(
+            "Escolha um componente",
+            options=list(opcoes_componentes.keys())
+        )
+
+        componente_ativo = opcoes_componentes[
+            componente_escolhido
+        ]
+
+        st.success(
+            f"Componente ativo: {componente_ativo.nome}"
+        )
+
+        st.write("### Dados do componente selecionado")
+
+        st.write(
+            "ID:",
+            componente_ativo.id
+        )
+
+        st.write(
+            "Categoria:",
+            componente_ativo.categoria
+        )
+
+        st.write(
+            "Elemento:",
+            componente_ativo.nome
+        )
+
+        st.write(
+            "Classificação:",
+            componente_ativo.classificacao_elemento
+        )
+
+        st.write(
+            "Observações:",
+            componente_ativo.observacoes
         )
