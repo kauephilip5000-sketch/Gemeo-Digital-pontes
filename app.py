@@ -34,7 +34,8 @@ st.write("✅ Registro de anomalias")
 st.write("✅ Armazenamento de fotografias")
 st.write("✅ Classificação estrutural, funcional e de durabilidade")
 st.write("✅ Histórico das inspeções")
-st.write("✅ Emissão de relatórios") 
+st.write("✅ Emissão de relatórios")
+
 st.divider()
 
 st.header("Cadastro da OAE")
@@ -46,7 +47,9 @@ with st.form("form_cadastro_oae"):
     with col1:
         nome_oae = st.text_input("Nome da OAE")
 
-        codigo_oae = st.text_input("Código ou identificação da OAE")
+        codigo_oae = st.text_input(
+            "Código ou identificação da OAE"
+        )
 
         rodovia = st.text_input("Rodovia")
 
@@ -111,6 +114,8 @@ with st.form("form_cadastro_oae"):
     observacoes = st.text_area("Observações")
 
     enviar = st.form_submit_button("Salvar cadastro")
+
+
 if enviar:
 
     if nome_oae == "":
@@ -160,13 +165,22 @@ if enviar:
         st.write("Largura:", largura, "m")
         st.write("Tipo de protensão:", tipo_protensao)
         st.write("Observações:", observacoes)
+
+
 st.divider()
 
 st.header("OAEs cadastradas")
 
 db = SessionLocal()
-oaes = db.query(models.OAE).order_by(models.OAE.id).all()
+
+oaes = db.query(
+    models.OAE
+).order_by(
+    models.OAE.id
+).all()
+
 db.close()
+
 
 if len(oaes) == 0:
 
@@ -191,32 +205,33 @@ else:
 
     st.dataframe(
         dados_oaes,
-        use_container_width=True
+        width="stretch"
     )
-st.subheader("Selecionar OAE ativa")
 
-opcoes_oae = {
-    f"{oae.id} - {oae.nome}": oae
-    for oae in oaes
-}
+    st.subheader("Selecionar OAE ativa")
 
-oae_escolhida = st.selectbox(
-    "Escolha uma OAE",
-    options=list(opcoes_oae.keys())
-)
+    opcoes_oae = {
+        f"{oae.id} - {oae.nome}": oae
+        for oae in oaes
+    }
 
-oae_ativa = opcoes_oae[oae_escolhida]
+    oae_escolhida = st.selectbox(
+        "Escolha uma OAE",
+        options=list(opcoes_oae.keys())
+    )
 
-st.success(
-    f"OAE ativa: {oae_ativa.nome}"
-)
+    oae_ativa = opcoes_oae[oae_escolhida]
 
-st.write("### Dados da OAE selecionada")
+    st.success(
+        f"OAE ativa: {oae_ativa.nome}"
+    )
 
-st.write("ID:", oae_ativa.id)
-st.write("Nome:", oae_ativa.nome)
-st.write("Código:", oae_ativa.codigo)
-st.write("Rodovia:", oae_ativa.rodovia)
-st.write("Município:", oae_ativa.municipio)
-st.write("UF:", oae_ativa.uf)
-st.write("Tipo estrutural:", oae_ativa.tipo_estrutura)
+    st.write("### Dados da OAE selecionada")
+
+    st.write("ID:", oae_ativa.id)
+    st.write("Nome:", oae_ativa.nome)
+    st.write("Código:", oae_ativa.codigo)
+    st.write("Rodovia:", oae_ativa.rodovia)
+    st.write("Município:", oae_ativa.municipio)
+    st.write("UF:", oae_ativa.uf)
+    st.write("Tipo estrutural:", oae_ativa.tipo_estrutura)
