@@ -2,6 +2,7 @@ import streamlit as st
 
 from database import engine, Base, SessionLocal
 import models
+from fotos import mostrar_modulo_fotografias
 
 
 # ============================================================
@@ -1080,3 +1081,8 @@ else:
                 dados_classificacoes,
                 width="stretch"
             )
+mostrar_modulo_fotografias(
+    oae_ativa=oae_ativa,
+    inspecao_ativa=inspecao_ativa,
+    componente_ativo=componente_ativo
+)                

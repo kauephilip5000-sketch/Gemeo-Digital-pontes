@@ -221,3 +221,67 @@ class Classificacao(Base):
         Text,
         nullable=True
     )
+
+
+# ============================================================
+# FOTOGRAFIAS
+# ============================================================
+
+class Fotografia(Base):
+    __tablename__ = "fotografias"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    oae_id = Column(
+        Integer,
+        ForeignKey("oae.id"),
+        nullable=False
+    )
+
+    inspecao_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False
+    )
+
+    componente_id = Column(
+        Integer,
+        ForeignKey("componentes.id"),
+        nullable=True
+    )
+
+    anomalia_id = Column(
+        Integer,
+        ForeignKey("anomalias.id"),
+        nullable=True
+    )
+
+    data_foto = Column(
+        Date,
+        nullable=False
+    )
+
+    tipo_registro = Column(
+        String,
+        nullable=False
+    )
+
+    identificacao = Column(
+        String,
+        nullable=False
+    )
+
+    nome_arquivo = Column(
+        String,
+        nullable=False
+    )
+
+    caminho_arquivo = Column(
+        String,
+        nullable=False
+    )
+
+    observacoes = Column(
+        Text,
+        nullable=True
+    )
