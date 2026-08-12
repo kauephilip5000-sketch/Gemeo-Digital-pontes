@@ -165,19 +165,58 @@ st.divider()
 st.header("OAEs cadastradas")
 
 db = SessionLocal()
-
-oaes = db.query(models.OAE).all()
-
+oaes = db.query(models.OAE).order_by(models.OAE.id).all()
 db.close()
 
 if len(oaes) == 0:
+
     st.info("Nenhuma OAE cadastrada.")
 
 else:
+
+    dados_oaes = []
+
     for oae in oaes:
-        st.write(
-            f"ID: {oae.id} | "
-            f"Nome: {oae.nome} | "
-            f"Código: {oae.codigo} | "
-            f"Município: {oae.municipio} - {oae.uf}"
+        dados_oaes.append(
+            {
+                "ID": oae.id,
+                "Nome": oae.nome,
+                "Código": oae.codigo,
+                "Rodovia": oae.rodovia,
+                "Município": oae.municipio,
+                "UF": oae.uf,
+                "Tipo estrutural": oae.tipo_estrutura
+            }
         )
+
+    st.dataframe(
+        dados_oaes,
+        use_container_width=True
+    )
+st.subheader("Selecionar OAE ativa")
+
+opcoes_oae = {
+    f"{oae.id} - {oae.nome}": oae
+    for oae in oaes
+}
+
+oae_escolhida = st.selectbox(
+    "Escolha uma OAE",
+    options=list(opcoes_oae.keys())
+)
+
+oae_ativa = opcoes_oae[oae_escolhida]
+
+st.success(
+    f"OAE ativa: {oae_ativa.nome}"
+)
+
+st.write("### Dados da OAE selecionada")
+
+st.write("ID:", oae_ativa.id)
+st.write("Nome:", oae_ativa.nome)
+st.write("Código:", oae_ativa.codigo)
+st.write("Rodovia:", oae_ativa.rodovia)
+st.write("Município:", oae_ativa.municipio)
+st.write("UF:", oae_ativa.uf)
+st.write("Tipo estrutural:", oae_ativa.tipo_estrutura)
