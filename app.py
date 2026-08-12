@@ -1,8 +1,19 @@
 import streamlit as st
+
 from database import engine, Base, SessionLocal
 import models
 
+
+# ============================================================
+# CRIAÇÃO DAS TABELAS DO BANCO
+# ============================================================
+
 Base.metadata.create_all(bind=engine)
+
+
+# ============================================================
+# CONFIGURAÇÃO DA PÁGINA
+# ============================================================
 
 st.set_page_config(
     page_title="Gêmeo Digital - Pontes",
@@ -10,20 +21,31 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# ============================================================
+# CABEÇALHO
+# ============================================================
+
 st.title("🌉 Gêmeo Digital para Inspeção de Pontes")
 
 st.subheader(
-    "Sistema de apoio à inspeção e ao acompanhamento da integridade estrutural"
+    "Sistema de apoio à inspeção e ao acompanhamento "
+    "da integridade estrutural"
 )
 
 st.write(
     """
-    Este protótipo está sendo desenvolvido em Python como parte do Trabalho
-    de Conclusão de Curso 2.
+    Este protótipo está sendo desenvolvido em Python como parte do
+    Trabalho de Conclusão de Curso 2.
     """
 )
 
 st.divider()
+
+
+# ============================================================
+# FUNCIONALIDADES PREVISTAS
+# ============================================================
 
 st.header("Funcionalidades previstas")
 
@@ -38,6 +60,11 @@ st.write("✅ Emissão de relatórios")
 
 st.divider()
 
+
+# ============================================================
+# CADASTRO DA OAE
+# ============================================================
+
 st.header("Cadastro da OAE")
 
 with st.form("form_cadastro_oae"):
@@ -45,15 +72,22 @@ with st.form("form_cadastro_oae"):
     col1, col2 = st.columns(2)
 
     with col1:
-        nome_oae = st.text_input("Nome da OAE")
+
+        nome_oae = st.text_input(
+            "Nome da OAE"
+        )
 
         codigo_oae = st.text_input(
             "Código ou identificação da OAE"
         )
 
-        rodovia = st.text_input("Rodovia")
+        rodovia = st.text_input(
+            "Rodovia"
+        )
 
-        municipio = st.text_input("Município")
+        municipio = st.text_input(
+            "Município"
+        )
 
         uf = st.selectbox(
             "UF",
@@ -73,6 +107,7 @@ with st.form("form_cadastro_oae"):
         )
 
     with col2:
+
         tipo_estrutura = st.selectbox(
             "Tipo estrutural",
             [
@@ -111,17 +146,29 @@ with st.form("form_cadastro_oae"):
             ]
         )
 
-    observacoes = st.text_area("Observações")
+    observacoes = st.text_area(
+        "Observações"
+    )
 
-    enviar = st.form_submit_button("Salvar cadastro")
+    enviar = st.form_submit_button(
+        "Salvar cadastro"
+    )
 
+
+# ============================================================
+# SALVAR OAE
+# ============================================================
 
 if enviar:
 
     if nome_oae == "":
-        st.error("O nome da OAE é obrigatório.")
+
+        st.error(
+            "O nome da OAE é obrigatório."
+        )
 
     else:
+
         db = SessionLocal()
 
         nova_oae = models.OAE(
@@ -140,7 +187,9 @@ if enviar:
         )
 
         db.add(nova_oae)
+
         db.commit()
+
         db.refresh(nova_oae)
 
         id_gerado = nova_oae.id
@@ -148,49 +197,43 @@ if enviar:
         db.close()
 
         st.success(
-            f"OAE cadastrada com sucesso. ID gerado: {id_gerado}"
+            f"OAE cadastrada com sucesso. "
+            f"ID gerado: {id_gerado}"
         )
-
-        st.write("### Dados cadastrados")
-
-        st.write("Nome da OAE:", nome_oae)
-        st.write("Código:", codigo_oae)
-        st.write("Rodovia:", rodovia)
-        st.write("Município:", municipio)
-        st.write("UF:", uf)
-        st.write("Ano de construção:", ano_construcao)
-        st.write("Tipo estrutural:", tipo_estrutura)
-        st.write("Número de vãos:", numero_vaos)
-        st.write("Comprimento total:", comprimento_total, "m")
-        st.write("Largura:", largura, "m")
-        st.write("Tipo de protensão:", tipo_protensao)
-        st.write("Observações:", observacoes)
 
 
 st.divider()
+
+
+# ============================================================
+# OAEs CADASTRADAS
+# ============================================================
 
 st.header("OAEs cadastradas")
 
 db = SessionLocal()
 
-oaes = db.query(
-    models.OAE
-).order_by(
-    models.OAE.id
-).all()
+oaes = (
+    db.query(models.OAE)
+    .order_by(models.OAE.id)
+    .all()
+)
 
 db.close()
 
 
 if len(oaes) == 0:
 
-    st.info("Nenhuma OAE cadastrada.")
+    st.info(
+        "Nenhuma OAE cadastrada."
+    )
 
 else:
 
     dados_oaes = []
 
     for oae in oaes:
+
         dados_oaes.append(
             {
                 "ID": oae.id,
@@ -208,7 +251,14 @@ else:
         width="stretch"
     )
 
-    st.subheader("Selecionar OAE ativa")
+
+    # ========================================================
+    # SELEÇÃO DA OAE ATIVA
+    # ========================================================
+
+    st.subheader(
+        "Selecionar OAE ativa"
+    )
 
     opcoes_oae = {
         f"{oae.id} - {oae.nome}": oae
@@ -220,32 +270,72 @@ else:
         options=list(opcoes_oae.keys())
     )
 
-    oae_ativa = opcoes_oae[oae_escolhida]
+    oae_ativa = opcoes_oae[
+        oae_escolhida
+    ]
 
     st.success(
         f"OAE ativa: {oae_ativa.nome}"
     )
 
-    st.write("### Dados da OAE selecionada")
+    st.write(
+        "### Dados da OAE selecionada"
+    )
 
-    st.write("ID:", oae_ativa.id)
-    st.write("Nome:", oae_ativa.nome)
-    st.write("Código:", oae_ativa.codigo)
-    st.write("Rodovia:", oae_ativa.rodovia)
-    st.write("Município:", oae_ativa.municipio)
-    st.write("UF:", oae_ativa.uf)
-    st.write("Tipo estrutural:", oae_ativa.tipo_estrutura)
+    st.write(
+        "ID:",
+        oae_ativa.id
+    )
+
+    st.write(
+        "Nome:",
+        oae_ativa.nome
+    )
+
+    st.write(
+        "Código:",
+        oae_ativa.codigo
+    )
+
+    st.write(
+        "Rodovia:",
+        oae_ativa.rodovia
+    )
+
+    st.write(
+        "Município:",
+        oae_ativa.municipio
+    )
+
+    st.write(
+        "UF:",
+        oae_ativa.uf
+    )
+
+    st.write(
+        "Tipo estrutural:",
+        oae_ativa.tipo_estrutura
+    )
 
     st.divider()
 
-    st.header("Cadastro de componente")
+
+    # ========================================================
+    # CADASTRO DE COMPONENTE
+    # ========================================================
+
+    st.header(
+        "Cadastro de componente"
+    )
 
     st.write(
         f"Componente vinculado à OAE: "
         f"{oae_ativa.id} - {oae_ativa.nome}"
     )
 
-    with st.form("form_cadastro_componente"):
+    with st.form(
+        "form_cadastro_componente"
+    ):
 
         categoria_componente = st.selectbox(
             "Categoria do componente",
@@ -279,14 +369,22 @@ else:
             "Salvar componente"
         )
 
+
+    # ========================================================
+    # SALVAR COMPONENTE
+    # ========================================================
+
     if salvar_componente:
 
         if nome_componente == "":
+
             st.error(
-                "O nome ou identificação do componente é obrigatório."
+                "O nome ou identificação "
+                "do componente é obrigatório."
             )
 
         else:
+
             db = SessionLocal()
 
             novo_componente = models.Componente(
@@ -297,11 +395,19 @@ else:
                 observacoes=observacoes_componente
             )
 
-            db.add(novo_componente)
-            db.commit()
-            db.refresh(novo_componente)
+            db.add(
+                novo_componente
+            )
 
-            componente_id = novo_componente.id
+            db.commit()
+
+            db.refresh(
+                novo_componente
+            )
+
+            componente_id = (
+                novo_componente.id
+            )
 
             db.close()
 
@@ -310,26 +416,40 @@ else:
                 f"ID gerado: {componente_id}"
             )
 
+
     st.divider()
 
-    st.header("Componentes cadastrados da OAE ativa")
+
+    # ========================================================
+    # COMPONENTES CADASTRADOS
+    # ========================================================
+
+    st.header(
+        "Componentes cadastrados da OAE ativa"
+    )
 
     db = SessionLocal()
 
-    componentes = db.query(
-        models.Componente
-    ).filter(
-        models.Componente.oae_id == oae_ativa.id
-    ).order_by(
-        models.Componente.id
-    ).all()
+    componentes = (
+        db.query(models.Componente)
+        .filter(
+            models.Componente.oae_id
+            == oae_ativa.id
+        )
+        .order_by(
+            models.Componente.id
+        )
+        .all()
+    )
 
     db.close()
+
 
     if len(componentes) == 0:
 
         st.info(
-            "Nenhum componente cadastrado para esta OAE."
+            "Nenhum componente cadastrado "
+            "para esta OAE."
         )
 
     else:
@@ -337,13 +457,16 @@ else:
         dados_componentes = []
 
         for componente in componentes:
+
             dados_componentes.append(
                 {
                     "ID": componente.id,
                     "Categoria": componente.categoria,
                     "Elemento": componente.nome,
-                    "Classificação": componente.classificacao_elemento,
-                    "Observações": componente.observacoes
+                    "Classificação":
+                        componente.classificacao_elemento,
+                    "Observações":
+                        componente.observacoes
                 }
             )
 
@@ -352,27 +475,42 @@ else:
             width="stretch"
         )
 
-        st.subheader("Selecionar componente ativo")
+
+        # ====================================================
+        # COMPONENTE ATIVO
+        # ====================================================
+
+        st.subheader(
+            "Selecionar componente ativo"
+        )
 
         opcoes_componentes = {
-            f"{componente.id} - {componente.nome}": componente
+            f"{componente.id} - {componente.nome}":
+                componente
             for componente in componentes
         }
 
         componente_escolhido = st.selectbox(
             "Escolha um componente",
-            options=list(opcoes_componentes.keys())
+            options=list(
+                opcoes_componentes.keys()
+            )
         )
 
-        componente_ativo = opcoes_componentes[
-            componente_escolhido
-        ]
+        componente_ativo = (
+            opcoes_componentes[
+                componente_escolhido
+            ]
+        )
 
         st.success(
-            f"Componente ativo: {componente_ativo.nome}"
+            f"Componente ativo: "
+            f"{componente_ativo.nome}"
         )
 
-        st.write("### Dados do componente selecionado")
+        st.write(
+            "### Dados do componente selecionado"
+        )
 
         st.write(
             "ID:",
@@ -397,4 +535,232 @@ else:
         st.write(
             "Observações:",
             componente_ativo.observacoes
+        )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # CADASTRO DE INSPEÇÃO
+    # ========================================================
+
+    st.header(
+        "Cadastro de inspeção"
+    )
+
+    st.write(
+        f"Inspeção vinculada à OAE: "
+        f"{oae_ativa.id} - {oae_ativa.nome}"
+    )
+
+    with st.form(
+        "form_cadastro_inspecao"
+    ):
+
+        tipo_inspecao = st.selectbox(
+            "Tipo de inspeção",
+            [
+                "Cadastral",
+                "Rotineira",
+                "Especial",
+                "Extraordinária"
+            ]
+        )
+
+        data_inspecao = st.date_input(
+            "Data da inspeção",
+            format="DD/MM/YYYY"
+        )
+
+        responsavel_inspecao = st.text_input(
+            "Responsável pela inspeção"
+        )
+
+        registro_profissional = st.text_input(
+            "Registro profissional"
+        )
+
+        observacoes_inspecao = st.text_area(
+            "Observações da inspeção"
+        )
+
+        salvar_inspecao = st.form_submit_button(
+            "Salvar inspeção"
+        )
+
+
+    # ========================================================
+    # SALVAR INSPEÇÃO
+    # ========================================================
+
+    if salvar_inspecao:
+
+        db = SessionLocal()
+
+        nova_inspecao = models.Inspecao(
+            oae_id=oae_ativa.id,
+            tipo_inspecao=tipo_inspecao,
+            data_inspecao=data_inspecao,
+            responsavel=responsavel_inspecao,
+            registro_profissional=registro_profissional,
+            observacoes=observacoes_inspecao
+        )
+
+        db.add(
+            nova_inspecao
+        )
+
+        db.commit()
+
+        db.refresh(
+            nova_inspecao
+        )
+
+        inspecao_id = (
+            nova_inspecao.id
+        )
+
+        db.close()
+
+        st.success(
+            f"Inspeção cadastrada com sucesso. "
+            f"ID gerado: {inspecao_id}"
+        )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # INSPEÇÕES CADASTRADAS
+    # ========================================================
+
+    st.header(
+        "Inspeções cadastradas da OAE ativa"
+    )
+
+    db = SessionLocal()
+
+    inspecoes = (
+        db.query(models.Inspecao)
+        .filter(
+            models.Inspecao.oae_id
+            == oae_ativa.id
+        )
+        .order_by(
+            models.Inspecao.id
+        )
+        .all()
+    )
+
+    db.close()
+
+
+    if len(inspecoes) == 0:
+
+        st.info(
+            "Nenhuma inspeção cadastrada "
+            "para esta OAE."
+        )
+
+    else:
+
+        dados_inspecoes = []
+
+        for inspecao in inspecoes:
+
+            dados_inspecoes.append(
+                {
+                    "ID": inspecao.id,
+                    "Tipo": inspecao.tipo_inspecao,
+                    "Data":
+                        inspecao.data_inspecao.strftime(
+                            "%d/%m/%Y"
+                        ),
+                    "Responsável":
+                        inspecao.responsavel,
+                    "Registro profissional":
+                        inspecao.registro_profissional,
+                    "Observações":
+                        inspecao.observacoes
+                }
+            )
+
+        st.dataframe(
+            dados_inspecoes,
+            width="stretch"
+        )
+
+
+        # ====================================================
+        # INSPEÇÃO ATIVA
+        # ====================================================
+
+        st.subheader(
+            "Selecionar inspeção ativa"
+        )
+
+        opcoes_inspecoes = {
+            (
+                f"{inspecao.id} - "
+                f"{inspecao.tipo_inspecao} - "
+                f"{inspecao.data_inspecao.strftime('%d/%m/%Y')}"
+            ): inspecao
+            for inspecao in inspecoes
+        }
+
+        inspecao_escolhida = st.selectbox(
+            "Escolha uma inspeção",
+            options=list(
+                opcoes_inspecoes.keys()
+            )
+        )
+
+        inspecao_ativa = (
+            opcoes_inspecoes[
+                inspecao_escolhida
+            ]
+        )
+
+        st.success(
+            f"Inspeção ativa: "
+            f"{inspecao_ativa.tipo_inspecao} - "
+            f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
+        )
+
+        st.write(
+            "### Dados da inspeção selecionada"
+        )
+
+        st.write(
+            "ID:",
+            inspecao_ativa.id
+        )
+
+        st.write(
+            "Tipo:",
+            inspecao_ativa.tipo_inspecao
+        )
+
+        st.write(
+            "Data:",
+            inspecao_ativa.data_inspecao.strftime(
+                "%d/%m/%Y"
+            )
+        )
+
+        st.write(
+            "Responsável:",
+            inspecao_ativa.responsavel
+        )
+
+        st.write(
+            "Registro profissional:",
+            inspecao_ativa.registro_profissional
+        )
+
+        st.write(
+            "Observações:",
+            inspecao_ativa.observacoes
         )

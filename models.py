@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, Date
 from database import Base
 
 
@@ -49,6 +49,43 @@ class Componente(Base):
     )
 
     classificacao_elemento = Column(
+        String,
+        nullable=True
+    )
+
+    observacoes = Column(
+        Text,
+        nullable=True
+    )
+
+
+class Inspecao(Base):
+    __tablename__ = "inspecoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    oae_id = Column(
+        Integer,
+        ForeignKey("oae.id"),
+        nullable=False
+    )
+
+    tipo_inspecao = Column(
+        String,
+        nullable=False
+    )
+
+    data_inspecao = Column(
+        Date,
+        nullable=False
+    )
+
+    responsavel = Column(
+        String,
+        nullable=True
+    )
+
+    registro_profissional = Column(
         String,
         nullable=True
     )
