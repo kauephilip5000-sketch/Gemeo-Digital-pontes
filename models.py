@@ -5,7 +5,8 @@ from sqlalchemy import (
     Float,
     Text,
     ForeignKey,
-    Date
+    Date,
+    UniqueConstraint
 )
 
 from database import Base
@@ -171,6 +172,15 @@ class Anomalia(Base):
 
 class Classificacao(Base):
     __tablename__ = "classificacoes"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "oae_id",
+            "inspecao_id",
+            "componente_id",
+            name="uq_classificacao_oae_inspecao_componente"
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
 
