@@ -5,9 +5,14 @@ import altair as alt
 from database import SessionLocal
 import models
 
+from classificacao import (
+    calcular_classificacao_consolidada,
+    nota_texto
+)
+
 
 # ============================================================
-# FUNÇÕES AUXILIARES
+# CONSULTAS
 # ============================================================
 
 def buscar_inspecoes_oae(oae_id):
@@ -34,6 +39,9 @@ def buscar_inspecoes_oae(oae_id):
 
 def buscar_componente(componente_id):
 
+    if componente_id is None:
+        return None
+
     db = SessionLocal()
 
     componente = (
@@ -50,60 +58,75 @@ def buscar_componente(componente_id):
     return componente
 
 
+# ============================================================
+# CLASSIFICAÇÃO
+#
+# Toda a regra de consolidação vem agora do classificacao.py.
+#
+# Isso impede:
+# min(5, None)
+#
+# e mantém o NA fora do cálculo funcional.
+# ============================================================
+
 def calcular_notas_finais(
     oae_id,
     inspecao_id
 ):
 
-    db = SessionLocal()
-
-    classificacoes = (
-        db.query(models.Classificacao)
-        .filter(
-            models.Classificacao.oae_id
-            == oae_id
+    resultado = (
+        calcular_classificacao_consolidada(
+            oae_id,
+            inspecao_id
         )
-        .filter(
-            models.Classificacao.inspecao_id
-            == inspecao_id
-        )
-        .all()
     )
 
-    db.close()
-
-    if len(classificacoes) == 0:
+    if (
+        resultado["estrutural"] is None
+        and
+        resultado["funcional"] is None
+        and
+        resultado["durabilidade"] is None
+    ):
 
         return None
 
-
     return {
-        "estrutural": min(
-            item.nota_estrutural
-            for item in classificacoes
-        ),
+        "estrutural":
+            resultado["estrutural"],
 
-        "funcional": min(
-            item.nota_funcional
-            for item in classificacoes
-        ),
+        "funcional":
+            resultado["funcional"],
 
-        "durabilidade": min(
-            item.nota_durabilidade
-            for item in classificacoes
-        )
+        "durabilidade":
+            resultado["durabilidade"]
     }
 
+
+# ============================================================
+# INTERPRETAÇÃO DA VARIAÇÃO
+# ============================================================
 
 def interpretar_variacao_notas(
     nota_anterior,
     nota_atual
 ):
 
+    if (
+        nota_anterior is None
+        or
+        nota_atual is None
+    ):
+
+        return None, "NA"
+
+
     variacao = (
         nota_atual
-        - nota_anterior
+        -
+        nota_anterior
     )
+
 
     if variacao > 0:
 
@@ -118,15 +141,24 @@ def interpretar_variacao_notas(
         situacao = "Estável"
 
 
-    return variacao, situacao
+    return (
+        variacao,
+        situacao
+    )
 
+
+# ============================================================
+# ANOMALIAS
+# ============================================================
 
 def buscar_anomalias_oae(oae_id):
 
     db = SessionLocal()
 
     anomalias = (
-        db.query(models.AnomaliaPermanente)
+        db.query(
+            models.AnomaliaPermanente
+        )
         .filter(
             models.AnomaliaPermanente.oae_id
             == oae_id
@@ -149,7 +181,9 @@ def buscar_observacoes_anomalia(
     db = SessionLocal()
 
     observacoes = (
-        db.query(models.ObservacaoAnomalia)
+        db.query(
+            models.ObservacaoAnomalia
+        )
         .filter(
             models.ObservacaoAnomalia.anomalia_id
             == anomalia_id
@@ -159,6 +193,7 @@ def buscar_observacoes_anomalia(
 
 
     dados = []
+
 
     for observacao in observacoes:
 
@@ -188,7 +223,6 @@ def buscar_observacoes_anomalia(
     db.close()
 
 
-    # ORDEM CRONOLÓGICA REAL
     dados.sort(
         key=lambda item: (
             item["inspecao"].data_inspecao,
@@ -223,10 +257,10 @@ def contar_fotos_observacao(
 
 
 # ============================================================
-# GRÁFICO ESTÁTICO
+# GRÁFICOS TEMPORAIS
 #
-# Não utiliza interactive().
-# Portanto o scroll do mouse não altera zoom ou escala.
+# Sem .interactive()
+# Portanto o scroll do mouse não altera o gráfico.
 # ============================================================
 
 def criar_grafico_temporal(
@@ -296,6 +330,12 @@ def mostrar_evolucao_classificacoes(
     )
 
 
+    st.caption(
+        "Comparação entre as notas finais aplicáveis "
+        "de duas inspeções da OAE."
+    )
+
+
     inspecoes = buscar_inspecoes_oae(
         oae_ativa.id
     )
@@ -345,12 +385,16 @@ def mostrar_evolucao_classificacoes(
 
     for item in dados:
 
-        inspecao = item["inspecao"]
+        inspecao = item[
+            "inspecao"
+        ]
+
 
         texto = (
             f"{inspecao.data_inspecao.strftime('%d/%m/%Y')} "
             f"- {inspecao.tipo_inspecao}"
         )
+
 
         opcoes[
             texto
@@ -387,18 +431,13 @@ def mostrar_evolucao_classificacoes(
         )
 
 
-    anterior = (
-        opcoes[
-            anterior_texto
-        ]
-    )
+    anterior = opcoes[
+        anterior_texto
+    ]
 
-
-    atual = (
-        opcoes[
-            atual_texto
-        ]
-    )
+    atual = opcoes[
+        atual_texto
+    ]
 
 
     data_anterior = (
@@ -481,24 +520,59 @@ def mostrar_evolucao_classificacoes(
         )
 
 
-        comparacao.append(
-            {
-                "Parâmetro":
-                    nome,
+        if (
+            nota_anterior is None
+            or
+            nota_atual is None
+        ):
 
-                "Nota anterior":
-                    nota_anterior,
+            comparacao.append(
+                {
+                    "Parâmetro":
+                        nome,
 
-                "Nota atual":
-                    nota_atual,
+                    "Nota anterior":
+                        (
+                            nota_anterior
+                            if nota_anterior is not None
+                            else "NA"
+                        ),
 
-                "Variação":
-                    variacao,
+                    "Nota atual":
+                        (
+                            nota_atual
+                            if nota_atual is not None
+                            else "NA"
+                        ),
 
-                "Evolução":
-                    situacao
-            }
-        )
+                    "Variação":
+                        "NA",
+
+                    "Evolução":
+                        "Não comparável"
+                }
+            )
+
+        else:
+
+            comparacao.append(
+                {
+                    "Parâmetro":
+                        nome,
+
+                    "Nota anterior":
+                        nota_anterior,
+
+                    "Nota atual":
+                        nota_atual,
+
+                    "Variação":
+                        variacao,
+
+                    "Evolução":
+                        situacao
+                }
+            )
 
 
     st.dataframe(
@@ -507,6 +581,10 @@ def mostrar_evolucao_classificacoes(
         hide_index=True
     )
 
+
+    # ========================================================
+    # CARTÕES
+    # ========================================================
 
     col1, col2, col3 = (
         st.columns(3)
@@ -524,23 +602,64 @@ def mostrar_evolucao_classificacoes(
 
         with coluna:
 
-            st.metric(
-                item["Parâmetro"],
-                item["Nota atual"],
-                delta=item["Variação"]
-            )
+            nota_atual = item[
+                "Nota atual"
+            ]
 
-            st.write(
-                f"Situação: "
-                f"**{item['Evolução']}**"
-            )
+
+            variacao = item[
+                "Variação"
+            ]
+
+
+            if (
+                nota_atual == "NA"
+            ):
+
+                st.metric(
+                    item["Parâmetro"],
+                    "NA"
+                )
+
+                st.caption(
+                    "Parâmetro não comparável "
+                    "entre as inspeções selecionadas."
+                )
+
+            else:
+
+                delta = (
+                    variacao
+                    if variacao != "NA"
+                    else None
+                )
+
+
+                st.metric(
+                    item["Parâmetro"],
+                    nota_atual,
+                    delta=delta
+                )
+
+
+                st.caption(
+                    nota_texto(
+                        nota_atual
+                    )
+                )
+
+
+                st.write(
+                    f"Situação: "
+                    f"**{item['Evolução']}**"
+                )
 
 
     st.caption(
-        "Os termos melhora, piora e estável são uma "
-        "interpretação descritiva da variação numérica "
-        "entre as classificações registradas. "
-        "Não substituem a avaliação técnica do inspetor."
+        "Melhora, piora e estável representam apenas "
+        "a diferença numérica entre as notas registradas. "
+        "A interpretação técnica permanece sob "
+        "responsabilidade do profissional responsável."
     )
 
 
@@ -610,7 +729,11 @@ def mostrar_evolucao_anomalias(
 
             st.write(
                 "**Localização de referência:**",
-                anomalia.localizacao_referencia
+                (
+                    anomalia.localizacao_referencia
+                    or
+                    "Não informada"
+                )
             )
 
 
@@ -623,10 +746,6 @@ def mostrar_evolucao_anomalias(
                 )
             )
 
-
-            # =================================================
-            # SEM OBSERVAÇÕES
-            # =================================================
 
             if len(observacoes) == 0:
 
@@ -647,18 +766,13 @@ def mostrar_evolucao_anomalias(
 
             for item in observacoes:
 
-                observacao = (
-                    item[
-                        "observacao"
-                    ]
-                )
+                observacao = item[
+                    "observacao"
+                ]
 
-
-                inspecao = (
-                    item[
-                        "inspecao"
-                    ]
-                )
+                inspecao = item[
+                    "inspecao"
+                ]
 
 
                 dados_tabela.append(
@@ -696,7 +810,7 @@ def mostrar_evolucao_anomalias(
 
 
             # =================================================
-            # EVOLUÇÃO DA ABERTURA
+            # ABERTURA
             # =================================================
 
             dados_abertura = []
@@ -704,18 +818,13 @@ def mostrar_evolucao_anomalias(
 
             for item in observacoes:
 
-                observacao = (
-                    item[
-                        "observacao"
-                    ]
-                )
+                observacao = item[
+                    "observacao"
+                ]
 
-
-                inspecao = (
-                    item[
-                        "inspecao"
-                    ]
-                )
+                inspecao = item[
+                    "inspecao"
+                ]
 
 
                 if (
@@ -741,10 +850,8 @@ def mostrar_evolucao_anomalias(
                 )
 
 
-                df_abertura = (
-                    pd.DataFrame(
-                        dados_abertura
-                    )
+                df_abertura = pd.DataFrame(
+                    dados_abertura
                 )
 
 
@@ -771,7 +878,7 @@ def mostrar_evolucao_anomalias(
 
 
             # =================================================
-            # EVOLUÇÃO DA EXTENSÃO
+            # EXTENSÃO
             # =================================================
 
             dados_extensao = []
@@ -779,18 +886,13 @@ def mostrar_evolucao_anomalias(
 
             for item in observacoes:
 
-                observacao = (
-                    item[
-                        "observacao"
-                    ]
-                )
+                observacao = item[
+                    "observacao"
+                ]
 
-
-                inspecao = (
-                    item[
-                        "inspecao"
-                    ]
-                )
+                inspecao = item[
+                    "inspecao"
+                ]
 
 
                 if (
@@ -816,10 +918,8 @@ def mostrar_evolucao_anomalias(
                 )
 
 
-                df_extensao = (
-                    pd.DataFrame(
-                        dados_extensao
-                    )
+                df_extensao = pd.DataFrame(
+                    dados_extensao
                 )
 
 
@@ -846,7 +946,7 @@ def mostrar_evolucao_anomalias(
 
 
             # =================================================
-            # COMPARAÇÃO PRIMEIRA X ÚLTIMA
+            # PRIMEIRA X ÚLTIMA OBSERVAÇÃO
             # =================================================
 
             if len(observacoes) >= 2:
@@ -947,7 +1047,6 @@ def mostrar_evolucao_anomalias(
                             f"{primeira.abertura_fissura_mm:.2f} mm"
                         )
 
-
                     else:
 
                         st.metric(
@@ -992,7 +1091,6 @@ def mostrar_evolucao_anomalias(
                             f"Anterior: "
                             f"{primeira.extensao_anomalia_cm:.1f} cm"
                         )
-
 
                     else:
 
