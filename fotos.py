@@ -7,15 +7,186 @@ from database import SessionLocal
 import models
 
 
+# ============================================================
+# PASTA DE ARMAZENAMENTO
+# ============================================================
+
+PASTA_FOTOS = Path(
+    "uploads/fotos"
+)
+
+PASTA_FOTOS.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def buscar_observacoes_anomalias(
+    oae_id,
+    inspecao_id,
+    componente_id
+):
+
+    db = SessionLocal()
+
+    anomalias = (
+        db.query(models.AnomaliaPermanente)
+        .filter(
+            models.AnomaliaPermanente.oae_id
+            == oae_id
+        )
+        .filter(
+            models.AnomaliaPermanente.componente_id
+            == componente_id
+        )
+        .order_by(
+            models.AnomaliaPermanente.id
+        )
+        .all()
+    )
+
+    resultados = []
+
+    for anomalia in anomalias:
+
+        observacao = (
+            db.query(models.ObservacaoAnomalia)
+            .filter(
+                models.ObservacaoAnomalia.anomalia_id
+                == anomalia.id
+            )
+            .filter(
+                models.ObservacaoAnomalia.inspecao_id
+                == inspecao_id
+            )
+            .first()
+        )
+
+        if observacao is not None:
+
+            resultados.append(
+                {
+                    "anomalia": anomalia,
+                    "observacao": observacao
+                }
+            )
+
+    db.close()
+
+    return resultados
+
+
+def buscar_vinculo_fotografia(
+    fotografia_id
+):
+
+    db = SessionLocal()
+
+    vinculo = (
+        db.query(
+            models.VinculoFotografiaAnomalia
+        )
+        .filter(
+            models.VinculoFotografiaAnomalia.fotografia_id
+            == fotografia_id
+        )
+        .first()
+    )
+
+    if vinculo is None:
+
+        db.close()
+
+        return None
+
+    anomalia = (
+        db.query(
+            models.AnomaliaPermanente
+        )
+        .filter(
+            models.AnomaliaPermanente.id
+            == vinculo.anomalia_permanente_id
+        )
+        .first()
+    )
+
+    observacao = (
+        db.query(
+            models.ObservacaoAnomalia
+        )
+        .filter(
+            models.ObservacaoAnomalia.id
+            == vinculo.observacao_anomalia_id
+        )
+        .first()
+    )
+
+    db.close()
+
+    return {
+        "vinculo": vinculo,
+        "anomalia": anomalia,
+        "observacao": observacao
+    }
+
+
+def buscar_nome_componente(
+    componente_id
+):
+
+    if componente_id is None:
+        return "Sem componente específico"
+
+    db = SessionLocal()
+
+    componente = (
+        db.query(models.Componente)
+        .filter(
+            models.Componente.id
+            == componente_id
+        )
+        .first()
+    )
+
+    db.close()
+
+    if componente is None:
+        return f"Componente ID {componente_id}"
+
+    return componente.nome
+
+
+# ============================================================
+# MÓDULO PRINCIPAL
+# ============================================================
+
 def mostrar_modulo_fotografias(
     oae_ativa,
     inspecao_ativa,
     componente_ativo
 ):
 
-    st.divider()
+    st.header(
+        "📷 Registro fotográfico"
+    )
 
-    st.header("Registro fotográfico")
+
+    # ========================================================
+    # VERIFICAÇÕES
+    # ========================================================
+
+    if oae_ativa is None:
+
+        st.warning(
+            "Selecione uma OAE antes de registrar fotografias."
+        )
+
+        return
+
 
     if inspecao_ativa is None:
 
@@ -24,6 +195,7 @@ def mostrar_modulo_fotografias(
         )
 
         return
+
 
     if componente_ativo is None:
 
@@ -35,82 +207,191 @@ def mostrar_modulo_fotografias(
 
 
     # ========================================================
-    # BUSCAR ANOMALIAS DO COMPONENTE NA INSPEÇÃO
-    # ========================================================
-
-    db = SessionLocal()
-
-    anomalias = (
-        db.query(models.Anomalia)
-        .filter(
-            models.Anomalia.oae_id
-            == oae_ativa.id
-        )
-        .filter(
-            models.Anomalia.inspecao_id
-            == inspecao_ativa.id
-        )
-        .filter(
-            models.Anomalia.componente_id
-            == componente_ativo.id
-        )
-        .order_by(
-            models.Anomalia.id
-        )
-        .all()
-    )
-
-    db.close()
-
-
-    # ========================================================
-    # INFORMAÇÕES DO VÍNCULO
+    # CONTEXTO
     # ========================================================
 
     st.write(
-        f"**OAE:** {oae_ativa.nome}"
+        f"**OAE:** "
+        f"{oae_ativa.id} - {oae_ativa.nome}"
     )
 
     st.write(
         f"**Inspeção:** "
+        f"{inspecao_ativa.id} - "
         f"{inspecao_ativa.tipo_inspecao} - "
         f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
     )
 
     st.write(
-        f"**Componente:** {componente_ativo.nome}"
+        f"**Componente:** "
+        f"{componente_ativo.id} - "
+        f"{componente_ativo.nome}"
+    )
+
+    st.divider()
+
+
+    # ========================================================
+    # OBSERVAÇÕES DE ANOMALIAS DISPONÍVEIS
+    # ========================================================
+
+    observacoes_disponiveis = (
+        buscar_observacoes_anomalias(
+            oae_id=oae_ativa.id,
+            inspecao_id=inspecao_ativa.id,
+            componente_id=componente_ativo.id
+        )
     )
 
 
     # ========================================================
-    # OPÇÕES DE ANOMALIA
+    # NOVA FOTOGRAFIA
     # ========================================================
 
-    opcoes_anomalias = {
-        "Sem anomalia associada": None
-    }
+    st.subheader(
+        "➕ Adicionar fotografia"
+    )
 
-    for anomalia in anomalias:
-
-        texto = (
-            f"{anomalia.id} - "
-            f"{anomalia.tipo_anomalia}"
-        )
-
-        opcoes_anomalias[texto] = anomalia
+    tipo_vinculo = st.radio(
+        "O que esta fotografia registra?",
+        [
+            "Registro geral do componente",
+            "Anomalia observada nesta inspeção"
+        ],
+        horizontal=True
+    )
 
 
     # ========================================================
-    # FORMULÁRIO DE REGISTRO FOTOGRÁFICO
+    # ESCOLHA DA ANOMALIA
     # ========================================================
 
-    with st.form(
-        "form_registro_fotografico",
-        clear_on_submit=True
+    item_anomalia_selecionado = None
+
+    if (
+        tipo_vinculo
+        == "Anomalia observada nesta inspeção"
     ):
 
-        arquivo_foto = st.file_uploader(
-            "Selecione a fotografia",
+        if len(observacoes_disponiveis) == 0:
+
+            st.warning(
+                "Não existe nenhuma anomalia com observação "
+                "registrada para este componente nesta inspeção."
+            )
+
+            st.info(
+                "Primeiro vá ao módulo ⚠️ Anomalias e registre "
+                "uma nova anomalia ou uma nova observação de "
+                "anomalia existente. Depois volte aqui para "
+                "vincular a fotografia."
+            )
+
+        else:
+
+            mapa_anomalias = {}
+
+            for item in observacoes_disponiveis:
+
+                anomalia = item["anomalia"]
+                observacao = item["observacao"]
+
+                texto = (
+                    f"ID {anomalia.id} - "
+                    f"{anomalia.tipo_anomalia} - "
+                    f"{anomalia.localizacao_referencia}"
+                )
+
+                mapa_anomalias[
+                    texto
+                ] = {
+                    "anomalia": anomalia,
+                    "observacao": observacao
+                }
+
+            opcao_anomalia = st.selectbox(
+                "Anomalia registrada nesta inspeção",
+                options=list(
+                    mapa_anomalias.keys()
+                )
+            )
+
+            item_anomalia_selecionado = (
+                mapa_anomalias[
+                    opcao_anomalia
+                ]
+            )
+
+            anomalia_selecionada = (
+                item_anomalia_selecionado[
+                    "anomalia"
+                ]
+            )
+
+            observacao_selecionada = (
+                item_anomalia_selecionado[
+                    "observacao"
+                ]
+            )
+
+            st.success(
+                f"Fotografia será vinculada à "
+                f"Anomalia permanente ID "
+                f"{anomalia_selecionada.id}."
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.write(
+                    "**Tipo:**",
+                    anomalia_selecionada.tipo_anomalia
+                )
+
+                st.write(
+                    "**Localização de referência:**",
+                    anomalia_selecionada.localizacao_referencia
+                )
+
+            with col2:
+
+                st.write(
+                    "**Observação desta inspeção:**",
+                    f"ID {observacao_selecionada.id}"
+                )
+
+                st.write(
+                    "**Situação observada:**",
+                    (
+                        observacao_selecionada.situacao_observada
+                        or "Não informada"
+                    )
+                )
+
+
+    # ========================================================
+    # FORMULÁRIO DA FOTOGRAFIA
+    # ========================================================
+
+    pode_salvar = True
+
+    if (
+        tipo_vinculo
+        == "Anomalia observada nesta inspeção"
+        and
+        item_anomalia_selecionado is None
+    ):
+
+        pode_salvar = False
+
+
+    with st.form(
+        "form_registro_fotografico"
+    ):
+
+        arquivo = st.file_uploader(
+            "Selecionar fotografia",
             type=[
                 "jpg",
                 "jpeg",
@@ -121,11 +402,12 @@ def mostrar_modulo_fotografias(
 
         data_foto = st.date_input(
             "Data da fotografia",
+            value=inspecao_ativa.data_inspecao,
             format="DD/MM/YYYY"
         )
 
         tipo_registro = st.selectbox(
-            "Tipo de registro fotográfico",
+            "Tipo de registro",
             [
                 "Vista geral",
                 "Vista superior",
@@ -134,18 +416,22 @@ def mostrar_modulo_fotografias(
                 "Elemento estrutural",
                 "Anomalia",
                 "Outro"
-            ]
+            ],
+            index=(
+                5
+                if (
+                    tipo_vinculo
+                    == "Anomalia observada nesta inspeção"
+                )
+                else 4
+            )
         )
 
         identificacao = st.text_input(
             "Identificação da fotografia",
-            placeholder="Ex.: Foto 01 - Longarina L1"
-        )
-
-        anomalia_selecionada_texto = st.selectbox(
-            "Anomalia relacionada",
-            options=list(
-                opcoes_anomalias.keys()
+            placeholder=(
+                "Ex.: Foto 03 - Fissura na face inferior "
+                "da Longarina 1"
             )
         )
 
@@ -154,7 +440,8 @@ def mostrar_modulo_fotografias(
         )
 
         salvar_foto = st.form_submit_button(
-            "Salvar fotografia"
+            "Salvar fotografia",
+            disabled=not pode_salvar
         )
 
 
@@ -164,13 +451,13 @@ def mostrar_modulo_fotografias(
 
     if salvar_foto:
 
-        if arquivo_foto is None:
+        if arquivo is None:
 
             st.error(
                 "Selecione uma fotografia."
             )
 
-        elif identificacao == "":
+        elif identificacao.strip() == "":
 
             st.error(
                 "Informe a identificação da fotografia."
@@ -178,47 +465,44 @@ def mostrar_modulo_fotografias(
 
         else:
 
-            pasta_fotos = Path(
-                "uploads/fotos"
+            extensao_original = (
+                Path(
+                    arquivo.name
+                ).suffix.lower()
             )
 
-            pasta_fotos.mkdir(
-                parents=True,
-                exist_ok=True
+            if extensao_original == "":
+
+                extensao_original = ".jpg"
+
+            nome_salvo = (
+                f"{uuid4().hex}"
+                f"{extensao_original}"
             )
 
-            extensao = Path(
-                arquivo_foto.name
-            ).suffix.lower()
-
-            nome_unico = (
-                f"{uuid4().hex}{extensao}"
+            caminho_salvo = (
+                PASTA_FOTOS
+                / nome_salvo
             )
 
-            caminho_arquivo = (
-                pasta_fotos / nome_unico
-            )
 
-            caminho_arquivo.write_bytes(
-                arquivo_foto.getbuffer()
-            )
+            # ------------------------------------------------
+            # SALVAR ARQUIVO FÍSICO
+            # ------------------------------------------------
 
-            anomalia_selecionada = (
-                opcoes_anomalias[
-                    anomalia_selecionada_texto
-                ]
-            )
+            with open(
+                caminho_salvo,
+                "wb"
+            ) as arquivo_destino:
 
-            if anomalia_selecionada is None:
-
-                anomalia_id = None
-
-            else:
-
-                anomalia_id = (
-                    anomalia_selecionada.id
+                arquivo_destino.write(
+                    arquivo.getbuffer()
                 )
 
+
+            # ------------------------------------------------
+            # SALVAR REGISTRO NO BANCO
+            # ------------------------------------------------
 
             db = SessionLocal()
 
@@ -226,13 +510,17 @@ def mostrar_modulo_fotografias(
                 oae_id=oae_ativa.id,
                 inspecao_id=inspecao_ativa.id,
                 componente_id=componente_ativo.id,
-                anomalia_id=anomalia_id,
+
+                # O modelo antigo não será mais utilizado
+                # para novas fotografias.
+                anomalia_id=None,
+
                 data_foto=data_foto,
                 tipo_registro=tipo_registro,
                 identificacao=identificacao,
-                nome_arquivo=arquivo_foto.name,
+                nome_arquivo=arquivo.name,
                 caminho_arquivo=str(
-                    caminho_arquivo
+                    caminho_salvo
                 ),
                 observacoes=observacoes_foto
             )
@@ -247,22 +535,85 @@ def mostrar_modulo_fotografias(
                 nova_foto
             )
 
-            foto_id = nova_foto.id
+
+            # ------------------------------------------------
+            # VÍNCULO COM NOVO MODELO DE ANOMALIAS
+            # ------------------------------------------------
+
+            if (
+                tipo_vinculo
+                == "Anomalia observada nesta inspeção"
+                and
+                item_anomalia_selecionado
+                is not None
+            ):
+
+                anomalia = (
+                    item_anomalia_selecionado[
+                        "anomalia"
+                    ]
+                )
+
+                observacao = (
+                    item_anomalia_selecionado[
+                        "observacao"
+                    ]
+                )
+
+                novo_vinculo = (
+                    models.VinculoFotografiaAnomalia(
+                        fotografia_id=
+                            nova_foto.id,
+
+                        anomalia_permanente_id=
+                            anomalia.id,
+
+                        observacao_anomalia_id=
+                            observacao.id
+                    )
+                )
+
+                db.add(
+                    novo_vinculo
+                )
+
+                db.commit()
+
+
+            foto_id = (
+                nova_foto.id
+            )
 
             db.close()
 
+
             st.success(
-                f"Fotografia cadastrada com sucesso. "
-                f"ID gerado: {foto_id}"
+                f"Fotografia registrada com sucesso. "
+                f"ID: {foto_id}"
             )
 
+            if (
+                tipo_vinculo
+                == "Anomalia observada nesta inspeção"
+            ):
+
+                st.success(
+                    "A fotografia também foi vinculada "
+                    "à anomalia permanente e à observação "
+                    "desta inspeção."
+                )
+
+            st.rerun()
+
 
     # ========================================================
-    # FOTOGRAFIAS CADASTRADAS
+    # LISTAGEM DAS FOTOGRAFIAS DA INSPEÇÃO
     # ========================================================
+
+    st.divider()
 
     st.subheader(
-        "Fotografias da inspeção"
+        "📚 Fotografias da inspeção ativa"
     )
 
     db = SessionLocal()
@@ -286,123 +637,268 @@ def mostrar_modulo_fotografias(
     db.close()
 
 
-    quantidade_fotos = len(
+    total_fotos = len(
         fotografias
     )
 
     st.metric(
         "Total de fotografias nesta inspeção",
-        quantidade_fotos
+        total_fotos
     )
 
 
     # ========================================================
-    # CONTROLE DO QUANTITATIVO MÍNIMO
+    # VERIFICAÇÃO DE REGISTRO FOTOGRÁFICO
     # ========================================================
 
-    if inspecao_ativa.tipo_inspecao in [
-        "Cadastral",
-        "Rotineira"
-    ]:
+    if (
+        inspecao_ativa.tipo_inspecao
+        in [
+            "Cadastral",
+            "Rotineira"
+        ]
+    ):
 
-        minimo_fotos = 8
-
-        if quantidade_fotos < minimo_fotos:
-
-            faltam = (
-                minimo_fotos - quantidade_fotos
-            )
+        if total_fotos < 8:
 
             st.warning(
-                f"Foram cadastrados {quantidade_fotos} "
-                f"de {minimo_fotos} registros fotográficos. "
-                f"Faltam pelo menos {faltam} registro(s) "
-                f"para atingir o mínimo indicado na ficha "
-                f"da ABNT NBR 9452:2023."
+                f"Esta inspeção possui {total_fotos} "
+                f"fotografia(s) registrada(s). "
+                f"O roteiro correspondente prevê um "
+                f"registro fotográfico mínimo, portanto "
+                f"o conjunto ainda deve ser complementado."
             )
 
         else:
 
             st.success(
-                f"Quantitativo mínimo atendido: "
-                f"{quantidade_fotos} registros fotográficos."
+                "O registro fotográfico desta inspeção "
+                "já possui pelo menos 8 fotografias."
             )
 
     else:
 
         st.info(
-            "Para este tipo de inspeção, o sistema não aplica "
-            "automaticamente a regra de mínimo de oito registros."
+            "Para este tipo de inspeção, o sistema não "
+            "aplicará automaticamente a regra numérica "
+            "de 8 fotografias. A documentação deve ser "
+            "compatível com o roteiro específico da campanha."
         )
 
 
     # ========================================================
-    # EXIBIÇÃO DAS FOTOGRAFIAS
+    # SEM FOTOGRAFIAS
     # ========================================================
 
-    if quantidade_fotos == 0:
+    if total_fotos == 0:
 
         st.info(
-            "Nenhuma fotografia cadastrada "
-            "para esta inspeção."
+            "Nenhuma fotografia registrada "
+            "nesta inspeção."
         )
 
-    else:
+        return
 
-        for fotografia in fotografias:
 
-            st.write(
-                f"### Foto {fotografia.id} - "
-                f"{fotografia.identificacao}"
+    # ========================================================
+    # EXIBIR FOTOGRAFIAS
+    # ========================================================
+
+    for foto in fotografias:
+
+        componente_nome = (
+            buscar_nome_componente(
+                foto.componente_id
             )
+        )
 
-            st.write(
-                f"**Data:** "
-                f"{fotografia.data_foto.strftime('%d/%m/%Y')}"
-            )
+        titulo = (
+            f"Foto ID {foto.id} - "
+            f"{foto.identificacao}"
+        )
 
-            st.write(
-                f"**Tipo:** "
-                f"{fotografia.tipo_registro}"
-            )
-
-            if fotografia.anomalia_id is not None:
-
-                st.write(
-                    f"**Anomalia relacionada:** "
-                    f"ID {fotografia.anomalia_id}"
-                )
-
-            else:
-
-                st.write(
-                    "**Anomalia relacionada:** "
-                    "Nenhuma"
-                )
+        with st.expander(
+            titulo
+        ):
 
             caminho = Path(
-                fotografia.caminho_arquivo
+                foto.caminho_arquivo
             )
 
             if caminho.exists():
 
-                st.image(
-                    str(caminho),
-                    caption=fotografia.identificacao,
-                    width=600
-                )
+                try:
+
+                    st.image(
+                        str(caminho),
+                        caption=foto.identificacao
+                    )
+
+                except Exception:
+
+                    st.warning(
+                        "Não foi possível exibir "
+                        "esta imagem."
+                    )
 
             else:
 
                 st.warning(
-                    "Arquivo da fotografia não encontrado."
+                    "O arquivo desta fotografia "
+                    "não foi encontrado na pasta local."
                 )
 
-            if fotografia.observacoes:
+
+            # ------------------------------------------------
+            # INFORMAÇÕES BÁSICAS
+            # ------------------------------------------------
+
+            col1, col2 = st.columns(2)
+
+            with col1:
 
                 st.write(
-                    f"**Observações:** "
-                    f"{fotografia.observacoes}"
+                    "**ID da fotografia:**",
+                    foto.id
                 )
 
-            st.divider()
+                st.write(
+                    "**Data:**",
+                    foto.data_foto.strftime(
+                        "%d/%m/%Y"
+                    )
+                )
+
+                st.write(
+                    "**Tipo de registro:**",
+                    foto.tipo_registro
+                )
+
+            with col2:
+
+                st.write(
+                    "**Componente:**",
+                    componente_nome
+                )
+
+                st.write(
+                    "**Arquivo original:**",
+                    foto.nome_arquivo
+                )
+
+
+            # ------------------------------------------------
+            # VÍNCULO COM ANOMALIA
+            # ------------------------------------------------
+
+            vinculo = (
+                buscar_vinculo_fotografia(
+                    foto.id
+                )
+            )
+
+            if vinculo is None:
+
+                if foto.anomalia_id is not None:
+
+                    st.warning(
+                        "Esta fotografia pertence ao modelo "
+                        "antigo de anomalias. Ela será mantida "
+                        "no histórico, mas ainda não possui "
+                        "vínculo com uma anomalia permanente."
+                    )
+
+                else:
+
+                    st.info(
+                        "Registro geral, sem vínculo com "
+                        "anomalia permanente."
+                    )
+
+            else:
+
+                anomalia = (
+                    vinculo[
+                        "anomalia"
+                    ]
+                )
+
+                observacao = (
+                    vinculo[
+                        "observacao"
+                    ]
+                )
+
+                st.success(
+                    "Fotografia vinculada ao "
+                    "acompanhamento temporal de anomalia."
+                )
+
+                if anomalia is not None:
+
+                    st.write(
+                        "**Anomalia permanente:**",
+                        (
+                            f"ID {anomalia.id} - "
+                            f"{anomalia.tipo_anomalia}"
+                        )
+                    )
+
+                    st.write(
+                        "**Localização de referência:**",
+                        anomalia.localizacao_referencia
+                    )
+
+                if observacao is not None:
+
+                    st.write(
+                        "**Observação da inspeção:**",
+                        f"ID {observacao.id}"
+                    )
+
+                    st.write(
+                        "**Situação observada:**",
+                        (
+                            observacao.situacao_observada
+                            or "Não informada"
+                        )
+                    )
+
+                    if (
+                        observacao.abertura_fissura_mm
+                        is not None
+                    ):
+
+                        st.write(
+                            "**Abertura registrada:**",
+                            (
+                                f"{observacao.abertura_fissura_mm:.2f} mm"
+                            )
+                        )
+
+                    if (
+                        observacao.extensao_anomalia_cm
+                        is not None
+                    ):
+
+                        st.write(
+                            "**Extensão registrada:**",
+                            (
+                                f"{observacao.extensao_anomalia_cm:.1f} cm"
+                            )
+                        )
+
+
+            # ------------------------------------------------
+            # OBSERVAÇÕES
+            # ------------------------------------------------
+
+            if foto.observacoes:
+
+                st.write(
+                    "**Observações:**"
+                )
+
+                st.write(
+                    foto.observacoes
+                )

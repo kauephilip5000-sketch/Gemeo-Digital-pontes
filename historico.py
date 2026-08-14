@@ -4,20 +4,201 @@ from database import SessionLocal
 import models
 
 
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def buscar_componente(componente_id):
+    db = SessionLocal()
+
+    componente = (
+        db.query(models.Componente)
+        .filter(models.Componente.id == componente_id)
+        .first()
+    )
+
+    db.close()
+
+    return componente
+
+
+def buscar_anomalia(anomalia_id):
+    db = SessionLocal()
+
+    anomalia = (
+        db.query(models.AnomaliaPermanente)
+        .filter(models.AnomaliaPermanente.id == anomalia_id)
+        .first()
+    )
+
+    db.close()
+
+    return anomalia
+
+
+def contar_fotos_observacao(observacao_id):
+    db = SessionLocal()
+
+    quantidade = (
+        db.query(models.VinculoFotografiaAnomalia)
+        .filter(
+            models.VinculoFotografiaAnomalia.observacao_anomalia_id
+            == observacao_id
+        )
+        .count()
+    )
+
+    db.close()
+
+    return quantidade
+
+
+def buscar_fotos_observacao(observacao_id):
+    db = SessionLocal()
+
+    vinculos = (
+        db.query(models.VinculoFotografiaAnomalia)
+        .filter(
+            models.VinculoFotografiaAnomalia.observacao_anomalia_id
+            == observacao_id
+        )
+        .all()
+    )
+
+    fotografias = []
+
+    for vinculo in vinculos:
+
+        foto = (
+            db.query(models.Fotografia)
+            .filter(
+                models.Fotografia.id
+                == vinculo.fotografia_id
+            )
+            .first()
+        )
+
+        if foto is not None:
+            fotografias.append(foto)
+
+    db.close()
+
+    return fotografias
+
+
+def calcular_notas_inspecao(oae_id, inspecao_id):
+    db = SessionLocal()
+
+    classificacoes = (
+        db.query(models.Classificacao)
+        .filter(models.Classificacao.oae_id == oae_id)
+        .filter(models.Classificacao.inspecao_id == inspecao_id)
+        .all()
+    )
+
+    db.close()
+
+    if len(classificacoes) == 0:
+        return None
+
+    return {
+        "estrutural": min(
+            item.nota_estrutural
+            for item in classificacoes
+        ),
+        "funcional": min(
+            item.nota_funcional
+            for item in classificacoes
+        ),
+        "durabilidade": min(
+            item.nota_durabilidade
+            for item in classificacoes
+        )
+    }
+
+
+def contar_componentes_avaliados(inspecao_id):
+    db = SessionLocal()
+
+    classificacoes = (
+        db.query(models.Classificacao)
+        .filter(
+            models.Classificacao.inspecao_id
+            == inspecao_id
+        )
+        .all()
+    )
+
+    db.close()
+
+    ids_componentes = {
+        item.componente_id
+        for item in classificacoes
+    }
+
+    return len(ids_componentes)
+
+
+def buscar_observacoes_inspecao(inspecao_id):
+    db = SessionLocal()
+
+    observacoes = (
+        db.query(models.ObservacaoAnomalia)
+        .filter(
+            models.ObservacaoAnomalia.inspecao_id
+            == inspecao_id
+        )
+        .order_by(models.ObservacaoAnomalia.id)
+        .all()
+    )
+
+    db.close()
+
+    return observacoes
+
+
+def contar_fotografias_inspecao(oae_id, inspecao_id):
+    db = SessionLocal()
+
+    quantidade = (
+        db.query(models.Fotografia)
+        .filter(models.Fotografia.oae_id == oae_id)
+        .filter(models.Fotografia.inspecao_id == inspecao_id)
+        .count()
+    )
+
+    db.close()
+
+    return quantidade
+
+
+# ============================================================
+# MÓDULO PRINCIPAL
+# ============================================================
+
 def mostrar_historico_oae(oae_ativa):
 
-    st.divider()
+    st.header(
+        "📚 Histórico das inspeções"
+    )
 
-    st.header("Histórico das inspeções")
+    if oae_ativa is None:
 
-    st.write(
+        st.warning(
+            "Selecione uma OAE para visualizar o histórico."
+        )
+
+        return
+
+
+    st.caption(
         f"Histórico da OAE: "
-        f"**{oae_ativa.id} - {oae_ativa.nome}**"
+        f"{oae_ativa.id} - {oae_ativa.nome}"
     )
 
 
     # ========================================================
-    # BUSCAR INSPEÇÕES DA OAE
+    # BUSCAR INSPEÇÕES
     # ========================================================
 
     db = SessionLocal()
@@ -41,29 +222,14 @@ def mostrar_historico_oae(oae_ativa):
     if len(inspecoes) == 0:
 
         st.info(
-            "Nenhuma inspeção cadastrada "
-            "para esta OAE."
+            "Nenhuma inspeção cadastrada para esta OAE."
         )
 
         return
 
 
     # ========================================================
-    # RESUMO GERAL
-    # ========================================================
-
-    quantidade_inspecoes = len(
-        inspecoes
-    )
-
-    st.metric(
-        "Total de inspeções cadastradas",
-        quantidade_inspecoes
-    )
-
-
-    # ========================================================
-    # PERCORRER HISTÓRICO
+    # EXIBIR CADA INSPEÇÃO
     # ========================================================
 
     for inspecao in inspecoes:
@@ -79,13 +245,11 @@ def mostrar_historico_oae(oae_ativa):
         ):
 
             st.write(
-                f"**ID da inspeção:** "
-                f"{inspecao.id}"
+                f"**ID da inspeção:** {inspecao.id}"
             )
 
             st.write(
-                f"**Tipo:** "
-                f"{inspecao.tipo_inspecao}"
+                f"**Tipo:** {inspecao.tipo_inspecao}"
             )
 
             st.write(
@@ -93,141 +257,69 @@ def mostrar_historico_oae(oae_ativa):
                 f"{inspecao.data_inspecao.strftime('%d/%m/%Y')}"
             )
 
-            if inspecao.responsavel:
-
-                st.write(
-                    f"**Responsável:** "
-                    f"{inspecao.responsavel}"
-                )
-
-            if inspecao.registro_profissional:
-
-                st.write(
-                    f"**Registro profissional:** "
-                    f"{inspecao.registro_profissional}"
-                )
-
-            if inspecao.observacoes:
-
-                st.write(
-                    f"**Observações:** "
-                    f"{inspecao.observacoes}"
-                )
-
-
-            # =================================================
-            # COMPONENTES AVALIADOS
-            # =================================================
-
-            db = SessionLocal()
-
-            classificacoes = (
-                db.query(models.Classificacao)
-                .filter(
-                    models.Classificacao.oae_id
-                    == oae_ativa.id
-                )
-                .filter(
-                    models.Classificacao.inspecao_id
-                    == inspecao.id
-                )
-                .all()
+            st.write(
+                f"**Responsável:** "
+                f"{inspecao.responsavel or 'Não informado'}"
             )
 
-            db.close()
+            st.write(
+                f"**Registro profissional:** "
+                f"{inspecao.registro_profissional or 'Não informado'}"
+            )
 
-
-            componentes_avaliados = set()
-
-            for classificacao in classificacoes:
-
-                componentes_avaliados.add(
-                    classificacao.componente_id
-                )
-
-
-            quantidade_componentes = len(
-                componentes_avaliados
+            st.write(
+                f"**Observações gerais:** "
+                f"{inspecao.observacoes or 'Nenhuma'}"
             )
 
 
             # =================================================
-            # ANOMALIAS
+            # RESUMO
             # =================================================
 
-            db = SessionLocal()
-
-            anomalias = (
-                db.query(models.Anomalia)
-                .filter(
-                    models.Anomalia.oae_id
-                    == oae_ativa.id
+            componentes_avaliados = (
+                contar_componentes_avaliados(
+                    inspecao.id
                 )
-                .filter(
-                    models.Anomalia.inspecao_id
-                    == inspecao.id
-                )
-                .all()
             )
 
-            db.close()
-
-            quantidade_anomalias = len(
-                anomalias
+            observacoes_anomalias = (
+                buscar_observacoes_inspecao(
+                    inspecao.id
+                )
             )
-
-
-            # =================================================
-            # FOTOGRAFIAS
-            # =================================================
-
-            db = SessionLocal()
 
             fotografias = (
-                db.query(models.Fotografia)
-                .filter(
-                    models.Fotografia.oae_id
-                    == oae_ativa.id
+                contar_fotografias_inspecao(
+                    oae_ativa.id,
+                    inspecao.id
                 )
-                .filter(
-                    models.Fotografia.inspecao_id
-                    == inspecao.id
-                )
-                .all()
-            )
-
-            db.close()
-
-            quantidade_fotos = len(
-                fotografias
             )
 
 
-            # =================================================
-            # INDICADORES
-            # =================================================
-
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = (
+                st.columns(3)
+            )
 
             with col1:
 
                 st.metric(
                     "Componentes avaliados",
-                    quantidade_componentes
+                    componentes_avaliados
                 )
 
             with col2:
 
                 st.metric(
-                    "Anomalias",
-                    quantidade_anomalias
+                    "Anomalias observadas",
+                    len(observacoes_anomalias)
                 )
 
             with col3:
 
                 st.metric(
                     "Fotografias",
-                    quantidade_fotos
+                    fotografias
                 )
 
 
@@ -235,7 +327,16 @@ def mostrar_historico_oae(oae_ativa):
             # CLASSIFICAÇÃO DA INSPEÇÃO
             # =================================================
 
-            if len(classificacoes) == 0:
+            st.subheader(
+                "⭐ Classificação da inspeção"
+            )
+
+            notas = calcular_notas_inspecao(
+                oae_ativa.id,
+                inspecao.id
+            )
+
+            if notas is None:
 
                 st.info(
                     "Nenhuma classificação registrada "
@@ -244,125 +345,195 @@ def mostrar_historico_oae(oae_ativa):
 
             else:
 
-                notas_estruturais = [
-                    classificacao.nota_estrutural
-                    for classificacao in classificacoes
-                ]
-
-                notas_funcionais = [
-                    classificacao.nota_funcional
-                    for classificacao in classificacoes
-                ]
-
-                notas_durabilidade = [
-                    classificacao.nota_durabilidade
-                    for classificacao in classificacoes
-                ]
-
-
-                nota_estrutural_final = min(
-                    notas_estruturais
+                col1, col2, col3 = (
+                    st.columns(3)
                 )
-
-                nota_funcional_final = min(
-                    notas_funcionais
-                )
-
-                nota_durabilidade_final = min(
-                    notas_durabilidade
-                )
-
-
-                st.write(
-                    "### Classificação da inspeção"
-                )
-
-
-                col1, col2, col3 = st.columns(3)
-
 
                 with col1:
 
                     st.metric(
                         "Estrutural",
-                        nota_estrutural_final
+                        notas["estrutural"]
                     )
-
 
                 with col2:
 
                     st.metric(
                         "Funcional",
-                        nota_funcional_final
+                        notas["funcional"]
                     )
-
 
                 with col3:
 
                     st.metric(
                         "Durabilidade",
-                        nota_durabilidade_final
+                        notas["durabilidade"]
                     )
 
 
             # =================================================
-            # LISTA DE ANOMALIAS
+            # ANOMALIAS OBSERVADAS NA INSPEÇÃO
             # =================================================
 
-            if quantidade_anomalias > 0:
+            st.subheader(
+                "⚠️ Anomalias observadas nesta inspeção"
+            )
 
-                st.write(
-                    "### Anomalias registradas"
+            if len(observacoes_anomalias) == 0:
+
+                st.info(
+                    "Nenhuma observação de anomalia "
+                    "registrada nesta inspeção."
                 )
 
-                dados_anomalias = []
+            else:
 
-                for anomalia in anomalias:
+                for observacao in observacoes_anomalias:
 
-                    db = SessionLocal()
-
-                    componente = (
-                        db.query(models.Componente)
-                        .filter(
-                            models.Componente.id
-                            == anomalia.componente_id
-                        )
-                        .first()
+                    anomalia = buscar_anomalia(
+                        observacao.anomalia_id
                     )
 
-                    db.close()
+                    if anomalia is None:
+                        continue
 
-
-                    if componente is None:
-
-                        nome_componente = (
-                            "Componente não encontrado"
-                        )
-
-                    else:
-
-                        nome_componente = (
-                            componente.nome
-                        )
-
-
-                    dados_anomalias.append(
-                        {
-                            "ID":
-                                anomalia.id,
-                            "Componente":
-                                nome_componente,
-                            "Tipo":
-                                anomalia.tipo_anomalia,
-                            "Localização":
-                                anomalia.localizacao,
-                            "Descrição":
-                                anomalia.descricao
-                        }
+                    componente = buscar_componente(
+                        anomalia.componente_id
                     )
 
+                    nome_componente = (
+                        componente.nome
+                        if componente is not None
+                        else f"Componente ID {anomalia.componente_id}"
+                    )
 
-                st.dataframe(
-                    dados_anomalias,
-                    width="stretch"
-                )
+                    titulo_anomalia = (
+                        f"Anomalia ID {anomalia.id} - "
+                        f"{anomalia.tipo_anomalia} - "
+                        f"{nome_componente}"
+                    )
+
+                    with st.container(
+                        border=True
+                    ):
+
+                        st.markdown(
+                            f"#### {titulo_anomalia}"
+                        )
+
+                        st.write(
+                            "**Localização de referência:**",
+                            anomalia.localizacao_referencia
+                        )
+
+                        if observacao.localizacao_detalhada:
+
+                            st.write(
+                                "**Localização nesta inspeção:**",
+                                observacao.localizacao_detalhada
+                            )
+
+                        if observacao.descricao:
+
+                            st.write(
+                                "**Descrição nesta inspeção:**",
+                                observacao.descricao
+                            )
+
+
+                        # =====================================
+                        # MEDIDAS
+                        # =====================================
+
+                        col1, col2, col3 = (
+                            st.columns(3)
+                        )
+
+                        with col1:
+
+                            if (
+                                observacao.abertura_fissura_mm
+                                is None
+                            ):
+
+                                abertura = "-"
+
+                            else:
+
+                                abertura = (
+                                    f"{observacao.abertura_fissura_mm:.2f} mm"
+                                )
+
+                            st.metric(
+                                "Abertura",
+                                abertura
+                            )
+
+                        with col2:
+
+                            if (
+                                observacao.extensao_anomalia_cm
+                                is None
+                            ):
+
+                                extensao = "-"
+
+                            else:
+
+                                extensao = (
+                                    f"{observacao.extensao_anomalia_cm:.1f} cm"
+                                )
+
+                            st.metric(
+                                "Extensão",
+                                extensao
+                            )
+
+                        with col3:
+
+                            st.metric(
+                                "Fotografias vinculadas",
+                                contar_fotos_observacao(
+                                    observacao.id
+                                )
+                            )
+
+
+                        st.write(
+                            "**Situação observada:**",
+                            (
+                                observacao.situacao_observada
+                                or "Não informada"
+                            )
+                        )
+
+                        if observacao.observacoes:
+
+                            st.write(
+                                "**Observações:**",
+                                observacao.observacoes
+                            )
+
+
+                        # =====================================
+                        # FOTOS DA OBSERVAÇÃO
+                        # =====================================
+
+                        fotos_observacao = (
+                            buscar_fotos_observacao(
+                                observacao.id
+                            )
+                        )
+
+                        if len(fotos_observacao) > 0:
+
+                            st.write(
+                                "**Registro fotográfico vinculado:**"
+                            )
+
+                            for foto in fotos_observacao:
+
+                                st.write(
+                                    f"📷 Foto ID {foto.id} - "
+                                    f"{foto.identificacao}"
+                                )

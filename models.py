@@ -19,36 +19,85 @@ from database import Base
 class OAE(Base):
     __tablename__ = "oae"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
-    nome = Column(String, nullable=False)
-    codigo = Column(String, nullable=True)
-    rodovia = Column(String, nullable=True)
-    municipio = Column(String, nullable=True)
-    uf = Column(String, nullable=True)
+    nome = Column(
+        String,
+        nullable=False
+    )
 
-    ano_construcao = Column(Integer, nullable=True)
+    codigo = Column(
+        String,
+        nullable=True
+    )
 
-    tipo_estrutura = Column(String, nullable=True)
+    rodovia = Column(
+        String,
+        nullable=True
+    )
 
-    numero_vaos = Column(Integer, nullable=True)
+    municipio = Column(
+        String,
+        nullable=True
+    )
 
-    comprimento_total = Column(Float, nullable=True)
-    largura = Column(Float, nullable=True)
+    uf = Column(
+        String,
+        nullable=True
+    )
 
-    tipo_protensao = Column(String, nullable=True)
+    ano_construcao = Column(
+        Integer,
+        nullable=True
+    )
 
-    observacoes = Column(Text, nullable=True)
+    tipo_estrutura = Column(
+        String,
+        nullable=True
+    )
+
+    numero_vaos = Column(
+        Integer,
+        nullable=True
+    )
+
+    comprimento_total = Column(
+        Float,
+        nullable=True
+    )
+
+    largura = Column(
+        Float,
+        nullable=True
+    )
+
+    tipo_protensao = Column(
+        String,
+        nullable=True
+    )
+
+    observacoes = Column(
+        Text,
+        nullable=True
+    )
 
 
 # ============================================================
-# COMPONENTES
+# COMPONENTE
 # ============================================================
 
 class Componente(Base):
     __tablename__ = "componentes"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     oae_id = Column(
         Integer,
@@ -78,13 +127,17 @@ class Componente(Base):
 
 
 # ============================================================
-# INSPEÇÕES
+# INSPEÇÃO
 # ============================================================
 
 class Inspecao(Base):
     __tablename__ = "inspecoes"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     oae_id = Column(
         Integer,
@@ -119,13 +172,118 @@ class Inspecao(Base):
 
 
 # ============================================================
-# ANOMALIAS
+# DETALHES ESPECÍFICOS DA INSPEÇÃO
+# ============================================================
+
+class DetalheInspecao(Base):
+    __tablename__ = "detalhes_inspecoes"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    inspecao_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False,
+        unique=True
+    )
+
+    # --------------------------------------------------------
+    # CADASTRAL
+    # --------------------------------------------------------
+
+    motivo_cadastral = Column(
+        String,
+        nullable=True
+    )
+
+    descricao_alteracao = Column(
+        Text,
+        nullable=True
+    )
+
+    # --------------------------------------------------------
+    # ROTINEIRA
+    # --------------------------------------------------------
+
+    comentarios_alteracoes = Column(
+        Text,
+        nullable=True
+    )
+
+    # --------------------------------------------------------
+    # ESPECIAL
+    # --------------------------------------------------------
+
+    procedimento_utilizado = Column(
+        Text,
+        nullable=True
+    )
+
+    ensaios_previstos = Column(
+        Text,
+        nullable=True
+    )
+
+    diagnostico = Column(
+        Text,
+        nullable=True
+    )
+
+    recomendacoes = Column(
+        Text,
+        nullable=True
+    )
+
+    # --------------------------------------------------------
+    # EXTRAORDINÁRIA
+    # --------------------------------------------------------
+
+    motivo_extraordinaria = Column(
+        String,
+        nullable=True
+    )
+
+    data_evento = Column(
+        Date,
+        nullable=True
+    )
+
+    descricao_evento = Column(
+        Text,
+        nullable=True
+    )
+
+    componente_afetado_id = Column(
+        Integer,
+        ForeignKey("componentes.id"),
+        nullable=True
+    )
+
+    terapia_recomendada = Column(
+        Text,
+        nullable=True
+    )
+
+
+# ============================================================
+# ANOMALIA ANTIGA
+#
+# Mantida temporariamente somente para preservar
+# os registros do modelo anterior.
 # ============================================================
 
 class Anomalia(Base):
     __tablename__ = "anomalias"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     oae_id = Column(
         Integer,
@@ -167,7 +325,7 @@ class Anomalia(Base):
 
 
 # ============================================================
-# CLASSIFICAÇÕES
+# CLASSIFICAÇÃO
 # ============================================================
 
 class Classificacao(Base):
@@ -182,7 +340,11 @@ class Classificacao(Base):
         ),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     oae_id = Column(
         Integer,
@@ -234,13 +396,21 @@ class Classificacao(Base):
 
 
 # ============================================================
-# FOTOGRAFIAS
+# FOTOGRAFIA
+#
+# Esta é a tabela já existente no banco.
+# O campo anomalia_id permanece somente para compatibilidade
+# com as fotografias antigas.
 # ============================================================
 
 class Fotografia(Base):
     __tablename__ = "fotografias"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     oae_id = Column(
         Integer,
@@ -295,6 +465,8 @@ class Fotografia(Base):
         Text,
         nullable=True
     )
+
+
 # ============================================================
 # ANOMALIA PERMANENTE
 # ============================================================
@@ -349,7 +521,7 @@ class AnomaliaPermanente(Base):
 
 
 # ============================================================
-# OBSERVAÇÃO DA ANOMALIA EM UMA INSPEÇÃO
+# OBSERVAÇÃO TEMPORAL DA ANOMALIA
 # ============================================================
 
 class ObservacaoAnomalia(Base):
@@ -409,4 +581,39 @@ class ObservacaoAnomalia(Base):
             "inspecao_id",
             name="uq_anomalia_inspecao"
         ),
+    )
+
+
+# ============================================================
+# VÍNCULO ENTRE FOTOGRAFIA E NOVO MODELO DE ANOMALIAS
+#
+# Essa nova tabela evita alterar a tabela fotografias existente.
+# ============================================================
+
+class VinculoFotografiaAnomalia(Base):
+    __tablename__ = "vinculos_fotografias_anomalias"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    fotografia_id = Column(
+        Integer,
+        ForeignKey("fotografias.id"),
+        nullable=False,
+        unique=True
+    )
+
+    anomalia_permanente_id = Column(
+        Integer,
+        ForeignKey("anomalias_permanentes.id"),
+        nullable=False
+    )
+
+    observacao_anomalia_id = Column(
+        Integer,
+        ForeignKey("observacoes_anomalias.id"),
+        nullable=False
     )
