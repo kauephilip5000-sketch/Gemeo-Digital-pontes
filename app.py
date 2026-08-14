@@ -3,6 +3,7 @@ import streamlit as st
 from database import engine, Base, SessionLocal
 import models
 
+from anomalias import mostrar_modulo_anomalias
 from fotos import mostrar_modulo_fotografias
 from historico import mostrar_historico_oae
 from evolucao import mostrar_evolucao_oae
@@ -71,6 +72,10 @@ st.write(
 
 st.write(
     "✅ Registro de anomalias"
+)
+
+st.write(
+    "✅ Acompanhamento temporal de anomalias"
 )
 
 st.write(
@@ -881,11 +886,20 @@ else:
 
 
     # ========================================================
-    # CADASTRO DE ANOMALIA
+    # CADASTRO ANTIGO DE ANOMALIA
+    #
+    # TEMPORÁRIO:
+    # manteremos este módulo por enquanto para preservar
+    # e visualizar os registros antigos já existentes.
     # ========================================================
 
     st.header(
-        "Cadastro de anomalia"
+        "Cadastro de anomalia - modelo anterior"
+    )
+
+    st.caption(
+        "Este cadastro será substituído pelo novo módulo "
+        "de acompanhamento de anomalias após a validação."
     )
 
     if componente_ativo is None:
@@ -924,7 +938,7 @@ else:
         )
 
         with st.form(
-            "form_cadastro_anomalia"
+            "form_cadastro_anomalia_antigo"
         ):
 
             tipo_anomalia = st.text_input(
@@ -1002,11 +1016,11 @@ else:
 
 
         # ====================================================
-        # ANOMALIAS DA INSPEÇÃO E COMPONENTE
+        # ANOMALIAS ANTIGAS
         # ====================================================
 
         st.subheader(
-            "Anomalias cadastradas"
+            "Anomalias do modelo anterior"
         )
 
         db = SessionLocal()
@@ -1039,8 +1053,8 @@ else:
         if len(anomalias) == 0:
 
             st.info(
-                "Nenhuma anomalia cadastrada "
-                "para esta inspeção e componente."
+                "Nenhuma anomalia do modelo anterior "
+                "cadastrada para esta inspeção e componente."
             )
 
         else:
@@ -1537,6 +1551,17 @@ else:
 
 
     # ========================================================
+    # NOVO MÓDULO DE ACOMPANHAMENTO DAS ANOMALIAS
+    # ========================================================
+
+    mostrar_modulo_anomalias(
+        oae_ativa=oae_ativa,
+        inspecao_ativa=inspecao_ativa,
+        componente_ativo=componente_ativo
+    )
+
+
+    # ========================================================
     # REGISTRO FOTOGRÁFICO
     # ========================================================
 
@@ -1548,7 +1573,7 @@ else:
 
 
     # ========================================================
-    # HISTÓRICO DAS INSPEÇÕES
+    # HISTÓRICO
     # ========================================================
 
     mostrar_historico_oae(

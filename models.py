@@ -295,3 +295,118 @@ class Fotografia(Base):
         Text,
         nullable=True
     )
+# ============================================================
+# ANOMALIA PERMANENTE
+# ============================================================
+
+class AnomaliaPermanente(Base):
+    __tablename__ = "anomalias_permanentes"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    oae_id = Column(
+        Integer,
+        ForeignKey("oae.id"),
+        nullable=False
+    )
+
+    componente_id = Column(
+        Integer,
+        ForeignKey("componentes.id"),
+        nullable=False
+    )
+
+    inspecao_origem_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False
+    )
+
+    tipo_anomalia = Column(
+        String,
+        nullable=False
+    )
+
+    localizacao_referencia = Column(
+        String,
+        nullable=False
+    )
+
+    descricao_inicial = Column(
+        Text,
+        nullable=True
+    )
+
+    ativa = Column(
+        Integer,
+        nullable=False,
+        default=1
+    )
+
+
+# ============================================================
+# OBSERVAÇÃO DA ANOMALIA EM UMA INSPEÇÃO
+# ============================================================
+
+class ObservacaoAnomalia(Base):
+    __tablename__ = "observacoes_anomalias"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    anomalia_id = Column(
+        Integer,
+        ForeignKey("anomalias_permanentes.id"),
+        nullable=False
+    )
+
+    inspecao_id = Column(
+        Integer,
+        ForeignKey("inspecoes.id"),
+        nullable=False
+    )
+
+    descricao = Column(
+        Text,
+        nullable=True
+    )
+
+    localizacao_detalhada = Column(
+        String,
+        nullable=True
+    )
+
+    abertura_fissura_mm = Column(
+        Float,
+        nullable=True
+    )
+
+    extensao_anomalia_cm = Column(
+        Float,
+        nullable=True
+    )
+
+    situacao_observada = Column(
+        String,
+        nullable=True
+    )
+
+    observacoes = Column(
+        Text,
+        nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "anomalia_id",
+            "inspecao_id",
+            name="uq_anomalia_inspecao"
+        ),
+    )
