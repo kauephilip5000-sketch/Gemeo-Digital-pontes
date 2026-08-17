@@ -9,6 +9,7 @@ from anomalias import mostrar_modulo_anomalias
 from fotos import mostrar_modulo_fotografias
 from historico import mostrar_historico_oae
 from evolucao import mostrar_evolucao_oae
+from cadastral import mostrar_modulo_cadastral
 
 from classificacao import (
     mostrar_modulo_classificacao,
@@ -2197,11 +2198,26 @@ elif pagina == "📋 Inspeções":
             f"{oae_ativa.nome}"
         )
 
-        tab1, tab2, tab3 = st.tabs(
+        st.caption(
+            "Os registros estão separados por tipo de inspeção "
+            "para manter o fluxo mais organizado."
+        )
+
+        (
+            tab_lista,
+            tab_cadastral,
+            tab_rotineira,
+            tab_especial,
+            tab_extraordinaria,
+            tab_andamento
+        ) = st.tabs(
             [
-                "📋 Inspeções cadastradas",
-                "➕ Nova inspeção",
-                "✅ Andamento da inspeção ativa"
+                "📑 Inspeções cadastradas",
+                "🟦 Cadastral",
+                "🟩 Rotineira",
+                "🟨 Especial",
+                "🟥 Extraordinária",
+                "✅ Andamento"
             ]
         )
 
@@ -2209,7 +2225,7 @@ elif pagina == "📋 Inspeções":
         # INSPEÇÕES CADASTRADAS
         # ====================================================
 
-        with tab1:
+        with tab_lista:
 
             inspecoes = buscar_inspecoes(
                 oae_ativa.id
@@ -2294,412 +2310,430 @@ elif pagina == "📋 Inspeções":
                     hide_index=True
                 )
 
+
         # ====================================================
-        # NOVA INSPEÇÃO
+        # CADASTRAL
         # ====================================================
 
-        with tab2:
+        with tab_cadastral:
+
+            mostrar_modulo_cadastral(
+                oae_ativa=oae_ativa,
+                inspecao_ativa=inspecao_ativa
+            )
+
+        # ====================================================
+        # ROTINEIRA
+        # ====================================================
+
+        with tab_rotineira:
 
             st.subheader(
-                "➕ Iniciar nova inspeção"
+                "🟩 Nova inspeção rotineira"
             )
 
-            tipo = st.selectbox(
-                "Tipo de inspeção",
-                [
-                    "Cadastral",
-                    "Rotineira",
-                    "Especial",
-                    "Extraordinária"
-                ],
-                key="tipo_nova_inspecao"
+            st.info(
+                "Inspeção de acompanhamento periódico. "
+                "Devem ser verificadas as anomalias já observadas "
+                "e registradas novas ocorrências."
             )
 
-            if tipo == "Cadastral":
+            inspecoes_existentes = buscar_inspecoes(
+                oae_ativa.id
+            )
 
-                st.info(
-                    "Inspeção destinada ao cadastramento inicial "
-                    "da OAE ou à atualização cadastral decorrente "
-                    "de alterações relevantes na configuração "
-                    "da obra."
-                )
+            if len(inspecoes_existentes) > 0:
 
-            elif tipo == "Rotineira":
+                ultima = inspecoes_existentes[0]
 
-                st.info(
-                    "Inspeção de acompanhamento. Devem ser "
-                    "verificadas as anomalias anteriormente "
-                    "observadas e registradas novas ocorrências."
-                )
-
-                inspecoes_existentes = buscar_inspecoes(
-                    oae_ativa.id
-                )
-
-                if len(inspecoes_existentes) > 0:
-
-                    ultima = (
-                        inspecoes_existentes[0]
-                    )
-
-                    st.write(
-                        "**Última inspeção cadastrada:**"
-                    )
-
-                    st.write(
-                        f"{ultima.tipo_inspecao} - "
-                        f"{ultima.data_inspecao.strftime('%d/%m/%Y')}"
-                    )
-
-                    db = SessionLocal()
-
-                    anomalias_ativas = (
-                        db.query(
-                            models.AnomaliaPermanente
-                        )
-                        .filter(
-                            models.AnomaliaPermanente.oae_id
-                            == oae_ativa.id
-                        )
-                        .filter(
-                            models.AnomaliaPermanente.ativa
-                            == 1
-                        )
-                        .count()
-                    )
-
-                    db.close()
-
-                    st.metric(
-                        "Anomalias atualmente em acompanhamento",
-                        anomalias_ativas
-                    )
-
-            elif tipo == "Especial":
-
-                st.warning(
-                    "A inspeção especial possui caráter "
-                    "pormenorizado e demanda maior detalhamento "
-                    "da vistoria, anomalias, ensaios e diagnóstico."
-                )
-
-            elif tipo == "Extraordinária":
-
-                st.warning(
-                    "A inspeção extraordinária decorre de uma "
-                    "demanda não programada, como impacto, "
-                    "incêndio, evento natural ou necessidade "
-                    "de avaliação mais criteriosa."
+                st.write(
+                    "**Última inspeção cadastrada:** "
+                    f"{ultima.tipo_inspecao} - "
+                    f"{ultima.data_inspecao.strftime('%d/%m/%Y')}"
                 )
 
             with st.form(
-                "form_nova_inspecao"
+                "form_nova_rotineira"
             ):
 
-                data = st.date_input(
+                data_rotineira = st.date_input(
                     "Data da inspeção",
-                    format="DD/MM/YYYY"
+                    format="DD/MM/YYYY",
+                    key="data_rotineira"
                 )
 
-                responsavel = st.text_input(
-                    "Responsável pela inspeção"
+                responsavel_rotineira = st.text_input(
+                    "Responsável pela inspeção",
+                    key="responsavel_rotineira"
                 )
 
-                registro = st.text_input(
-                    "Registro profissional"
+                registro_rotineira = st.text_input(
+                    "Registro profissional",
+                    key="registro_rotineira"
                 )
 
-                observacoes_gerais = st.text_area(
-                    "Observações gerais"
+                alteracoes_rotineira = st.text_area(
+                    "Alterações observadas em relação "
+                    "à inspeção anterior",
+                    key="alteracoes_rotineira"
                 )
 
-                motivo_cadastral = None
-                descricao_alteracao = None
+                observacoes_rotineira = st.text_area(
+                    "Observações gerais",
+                    key="observacoes_rotineira"
+                )
 
-                comentarios_alteracoes = None
-
-                procedimento = None
-                ensaios = None
-                diagnostico = None
-                recomendacoes = None
-
-                motivo_extraordinaria = None
-                data_evento = None
-                descricao_evento = None
-                componente_afetado_id = None
-                terapia = None
-
-                # =============================================
-                # CADASTRAL
-                # =============================================
-
-                if tipo == "Cadastral":
-
-                    st.markdown(
-                        "### Dados específicos da inspeção cadastral"
-                    )
-
-                    motivo_cadastral = st.selectbox(
-                        "Motivo da inspeção cadastral",
-                        [
-                            "Primeira inspeção da OAE",
-                            "Alteração na configuração da obra"
-                        ]
-                    )
-
-                    if (
-                        motivo_cadastral
-                        == "Alteração na configuração da obra"
-                    ):
-
-                        descricao_alteracao = (
-                            st.text_area(
-                                "Descreva a alteração realizada",
-                                placeholder=(
-                                    "Ex.: reforço estrutural, "
-                                    "alargamento, alteração das dimensões "
-                                    "ou mudança do sistema estrutural."
-                                )
-                            )
-                        )
-
-                # =============================================
-                # ROTINEIRA
-                # =============================================
-
-                elif tipo == "Rotineira":
-
-                    st.markdown(
-                        "### Dados específicos da inspeção rotineira"
-                    )
-
-                    comentarios_alteracoes = (
-                        st.text_area(
-                            "Alterações observadas em relação "
-                            "à inspeção anterior",
-                            placeholder=(
-                                "Descreva alterações do estado geral "
-                                "da OAE, quando identificadas."
-                            )
-                        )
-                    )
-
-                # =============================================
-                # ESPECIAL
-                # =============================================
-
-                elif tipo == "Especial":
-
-                    st.markdown(
-                        "### Dados específicos da inspeção especial"
-                    )
-
-                    procedimento = st.text_area(
-                        "Procedimento utilizado na inspeção",
-                        placeholder=(
-                            "Descreva os procedimentos, recursos "
-                            "de acesso e metodologia da vistoria."
-                        )
-                    )
-
-                    ensaios = st.text_area(
-                        "Ensaios previstos ou realizados",
-                        placeholder=(
-                            "Registre os ensaios não destrutivos "
-                            "ou outras investigações aplicáveis."
-                        )
-                    )
-
-                    diagnostico = st.text_area(
-                        "Diagnóstico das anomalias",
-                        placeholder=(
-                            "Pode ser preenchido ou complementado "
-                            "ao longo da inspeção."
-                        )
-                    )
-
-                    recomendacoes = st.text_area(
-                        "Recomendações e avaliações adicionais",
-                        placeholder=(
-                            "Registre avaliações complementares "
-                            "ou recomendações técnicas."
-                        )
-                    )
-
-                # =============================================
-                # EXTRAORDINÁRIA
-                # =============================================
-
-                elif tipo == "Extraordinária":
-
-                    st.markdown(
-                        "### Dados específicos da inspeção extraordinária"
-                    )
-
-                    motivo_extraordinaria = (
-                        st.selectbox(
-                            "Motivo da inspeção",
-                            [
-                                "Avaliação mais criteriosa de elemento",
-                                "Impacto de veículo",
-                                "Impacto de trem",
-                                "Impacto de embarcação",
-                                "Incêndio",
-                                "Inundação",
-                                "Vendaval",
-                                "Sismo",
-                                "Outro evento"
-                            ]
-                        )
-                    )
-
-                    data_evento = st.date_input(
-                        "Data do evento",
-                        format="DD/MM/YYYY"
-                    )
-
-                    descricao_evento = st.text_area(
-                        "Descrição do evento ou ocorrência"
-                    )
-
-                    componentes = buscar_componentes(
-                        oae_ativa.id
-                    )
-
-                    if len(componentes) > 0:
-
-                        mapa_componentes_form = {
-                            item.id:
-                                (
-                                    f"{item.id} - "
-                                    f"{item.nome}"
-                                )
-                            for item in componentes
-                        }
-
-                        componente_afetado_id = (
-                            st.selectbox(
-                                "Elemento inicialmente afetado",
-                                options=[
-                                    None
-                                ] + [
-                                    item.id
-                                    for item in componentes
-                                ],
-                                format_func=lambda x:
-                                    (
-                                        "Não definido"
-                                        if x is None
-                                        else
-                                        mapa_componentes_form[x]
-                                    )
-                            )
-                        )
-
-                    terapia = st.text_area(
-                        "Terapia ou providência recomendada",
-                        placeholder=(
-                            "Pode ser complementada após "
-                            "avaliação técnica."
-                        )
-                    )
-
-                salvar_inspecao = (
+                salvar_rotineira = (
                     st.form_submit_button(
-                        "Iniciar inspeção"
+                        "Criar inspeção rotineira"
                     )
                 )
 
-            if salvar_inspecao:
+            if salvar_rotineira:
 
-                db = SessionLocal()
+                if responsavel_rotineira.strip() == "":
 
-                nova = models.Inspecao(
-                    oae_id=oae_ativa.id,
-                    tipo_inspecao=tipo,
-                    data_inspecao=data,
-                    responsavel=responsavel,
-                    registro_profissional=registro,
-                    observacoes=observacoes_gerais
+                    st.error(
+                        "Informe o responsável pela inspeção."
+                    )
+
+                else:
+
+                    db = SessionLocal()
+
+                    nova = models.Inspecao(
+                        oae_id=oae_ativa.id,
+                        tipo_inspecao="Rotineira",
+                        data_inspecao=data_rotineira,
+                        responsavel=responsavel_rotineira,
+                        registro_profissional=registro_rotineira,
+                        observacoes=observacoes_rotineira
+                    )
+
+                    db.add(nova)
+                    db.flush()
+
+                    detalhe = models.DetalheInspecao(
+                        inspecao_id=nova.id,
+                        comentarios_alteracoes=
+                            alteracoes_rotineira
+                    )
+
+                    db.add(detalhe)
+                    db.commit()
+                    db.refresh(nova)
+
+                    novo_id = nova.id
+                    db.close()
+
+                    st.session_state.inspecao_ativa_id = (
+                        novo_id
+                    )
+
+                    st.success(
+                        "Inspeção rotineira criada com sucesso."
+                    )
+
+                    st.rerun()
+
+        # ====================================================
+        # ESPECIAL
+        # ====================================================
+
+        with tab_especial:
+
+            st.subheader(
+                "🟨 Nova inspeção especial"
+            )
+
+            st.warning(
+                "A inspeção especial é pormenorizada. "
+                "Nesta etapa mantemos o registro dos procedimentos, "
+                "ensaios, diagnóstico e recomendações; o módulo "
+                "normativo completo será refinado separadamente."
+            )
+
+            with st.form(
+                "form_nova_especial"
+            ):
+
+                data_especial = st.date_input(
+                    "Data da inspeção",
+                    format="DD/MM/YYYY",
+                    key="data_especial"
                 )
 
-                db.add(
-                    nova
+                responsavel_especial = st.text_input(
+                    "Responsável pela inspeção",
+                    key="responsavel_especial"
                 )
 
-                db.commit()
-
-                db.refresh(
-                    nova
+                registro_especial = st.text_input(
+                    "Registro profissional",
+                    key="registro_especial"
                 )
 
-                detalhe = models.DetalheInspecao(
-                    inspecao_id=nova.id,
-
-                    motivo_cadastral=
-                        motivo_cadastral,
-
-                    descricao_alteracao=
-                        descricao_alteracao,
-
-                    comentarios_alteracoes=
-                        comentarios_alteracoes,
-
-                    procedimento_utilizado=
-                        procedimento,
-
-                    ensaios_previstos=
-                        ensaios,
-
-                    diagnostico=
-                        diagnostico,
-
-                    recomendacoes=
-                        recomendacoes,
-
-                    motivo_extraordinaria=
-                        motivo_extraordinaria,
-
-                    data_evento=
-                        data_evento,
-
-                    descricao_evento=
-                        descricao_evento,
-
-                    componente_afetado_id=
-                        componente_afetado_id,
-
-                    terapia_recomendada=
-                        terapia
+                procedimento_especial = st.text_area(
+                    "Procedimento utilizado na inspeção",
+                    key="procedimento_especial"
                 )
 
-                db.add(
-                    detalhe
+                ensaios_especial = st.text_area(
+                    "Ensaios previstos ou realizados",
+                    key="ensaios_especial"
                 )
 
-                db.commit()
-
-                novo_id = (
-                    nova.id
+                diagnostico_especial = st.text_area(
+                    "Diagnóstico das anomalias",
+                    key="diagnostico_especial"
                 )
 
-                db.close()
-
-                st.session_state.inspecao_ativa_id = (
-                    novo_id
+                recomendacoes_especial = st.text_area(
+                    "Recomendações e avaliações adicionais",
+                    key="recomendacoes_especial"
                 )
 
-                st.success(
-                    f"Inspeção {tipo} iniciada com sucesso."
+                observacoes_especial = st.text_area(
+                    "Observações gerais",
+                    key="observacoes_especial"
                 )
 
-                st.rerun()
+                salvar_especial = (
+                    st.form_submit_button(
+                        "Criar inspeção especial"
+                    )
+                )
+
+            if salvar_especial:
+
+                if responsavel_especial.strip() == "":
+
+                    st.error(
+                        "Informe o responsável pela inspeção."
+                    )
+
+                else:
+
+                    db = SessionLocal()
+
+                    nova = models.Inspecao(
+                        oae_id=oae_ativa.id,
+                        tipo_inspecao="Especial",
+                        data_inspecao=data_especial,
+                        responsavel=responsavel_especial,
+                        registro_profissional=registro_especial,
+                        observacoes=observacoes_especial
+                    )
+
+                    db.add(nova)
+                    db.flush()
+
+                    detalhe = models.DetalheInspecao(
+                        inspecao_id=nova.id,
+                        procedimento_utilizado=
+                            procedimento_especial,
+                        ensaios_previstos=
+                            ensaios_especial,
+                        diagnostico=
+                            diagnostico_especial,
+                        recomendacoes=
+                            recomendacoes_especial
+                    )
+
+                    db.add(detalhe)
+                    db.commit()
+                    db.refresh(nova)
+
+                    novo_id = nova.id
+                    db.close()
+
+                    st.session_state.inspecao_ativa_id = (
+                        novo_id
+                    )
+
+                    st.success(
+                        "Inspeção especial criada com sucesso."
+                    )
+
+                    st.rerun()
+
+        # ====================================================
+        # EXTRAORDINÁRIA
+        # ====================================================
+
+        with tab_extraordinaria:
+
+            st.subheader(
+                "🟥 Nova inspeção extraordinária"
+            )
+
+            st.warning(
+                "Inspeção decorrente de demanda não programada, "
+                "como impacto, incêndio, evento natural ou "
+                "necessidade de avaliação mais detalhada."
+            )
+
+            componentes_extra = buscar_componentes(
+                oae_ativa.id
+            )
+
+            mapa_componentes_extra = {
+                item.id:
+                    f"{item.id} - {item.nome}"
+                for item in componentes_extra
+            }
+
+            with st.form(
+                "form_nova_extraordinaria"
+            ):
+
+                data_extra = st.date_input(
+                    "Data da inspeção",
+                    format="DD/MM/YYYY",
+                    key="data_extra"
+                )
+
+                responsavel_extra = st.text_input(
+                    "Responsável pela inspeção",
+                    key="responsavel_extra"
+                )
+
+                registro_extra = st.text_input(
+                    "Registro profissional",
+                    key="registro_extra"
+                )
+
+                motivo_extra = st.selectbox(
+                    "Motivo da inspeção",
+                    [
+                        "Avaliação mais criteriosa de elemento",
+                        "Impacto de veículo",
+                        "Impacto de trem",
+                        "Impacto de embarcação",
+                        "Incêndio",
+                        "Inundação",
+                        "Vendaval",
+                        "Sismo",
+                        "Outro evento"
+                    ],
+                    key="motivo_extra"
+                )
+
+                data_evento_extra = st.date_input(
+                    "Data do evento",
+                    format="DD/MM/YYYY",
+                    key="data_evento_extra"
+                )
+
+                descricao_evento_extra = st.text_area(
+                    "Descrição do evento ou ocorrência",
+                    key="descricao_evento_extra"
+                )
+
+                if len(componentes_extra) > 0:
+
+                    componente_extra = st.selectbox(
+                        "Elemento inicialmente afetado",
+                        options=[
+                            None
+                        ] + [
+                            item.id
+                            for item in componentes_extra
+                        ],
+                        format_func=lambda x:
+                            (
+                                "Não definido"
+                                if x is None
+                                else
+                                mapa_componentes_extra[x]
+                            ),
+                        key="componente_extra"
+                    )
+
+                else:
+
+                    componente_extra = None
+
+                terapia_extra = st.text_area(
+                    "Terapia ou providência recomendada",
+                    key="terapia_extra"
+                )
+
+                observacoes_extra = st.text_area(
+                    "Observações gerais",
+                    key="observacoes_extra"
+                )
+
+                salvar_extra = (
+                    st.form_submit_button(
+                        "Criar inspeção extraordinária"
+                    )
+                )
+
+            if salvar_extra:
+
+                if responsavel_extra.strip() == "":
+
+                    st.error(
+                        "Informe o responsável pela inspeção."
+                    )
+
+                elif descricao_evento_extra.strip() == "":
+
+                    st.error(
+                        "Descreva o evento ou ocorrência."
+                    )
+
+                else:
+
+                    db = SessionLocal()
+
+                    nova = models.Inspecao(
+                        oae_id=oae_ativa.id,
+                        tipo_inspecao="Extraordinária",
+                        data_inspecao=data_extra,
+                        responsavel=responsavel_extra,
+                        registro_profissional=registro_extra,
+                        observacoes=observacoes_extra
+                    )
+
+                    db.add(nova)
+                    db.flush()
+
+                    detalhe = models.DetalheInspecao(
+                        inspecao_id=nova.id,
+                        motivo_extraordinaria=motivo_extra,
+                        data_evento=data_evento_extra,
+                        descricao_evento=
+                            descricao_evento_extra,
+                        componente_afetado_id=
+                            componente_extra,
+                        terapia_recomendada=
+                            terapia_extra
+                    )
+
+                    db.add(detalhe)
+                    db.commit()
+                    db.refresh(nova)
+
+                    novo_id = nova.id
+                    db.close()
+
+                    st.session_state.inspecao_ativa_id = (
+                        novo_id
+                    )
+
+                    st.success(
+                        "Inspeção extraordinária criada com sucesso."
+                    )
+
+                    st.rerun()
 
         # ====================================================
         # ANDAMENTO DA INSPEÇÃO
         # ====================================================
 
-        with tab3:
+        with tab_andamento:
 
             if inspecao_ativa is None:
 
@@ -2782,9 +2816,8 @@ elif pagina == "📋 Inspeções":
                         )
 
                     st.info(
-                        "A etapa de documentos e croquis da "
-                        "inspeção cadastral será implementada "
-                        "em módulo próprio."
+                        "O checklist cadastral completo está na aba "
+                        "🟦 Cadastral, dentro de ✅ Andamento."
                     )
 
                 # =============================================
