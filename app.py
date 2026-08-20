@@ -13,6 +13,7 @@ from cadastral import mostrar_modulo_cadastral
 from rotineira import mostrar_modulo_rotineira
 from especial import mostrar_modulo_especial
 from extraordinaria import mostrar_modulo_extraordinaria
+from relatorios import mostrar_modulo_relatorios
 
 from classificacao import (
     mostrar_modulo_classificacao,
@@ -2513,28 +2514,7 @@ elif pagina == "📈 Histórico e evolução":
 
 elif pagina == "📄 Relatórios":
 
-    st.header(
-        "📄 Relatórios"
+    mostrar_modulo_relatorios(
+        oae_ativa=oae_ativa,
+        inspecao_ativa=inspecao_ativa,
     )
-
-    st.info(
-        "O módulo de relatórios será implementado "
-        "após a consolidação dos módulos de inspeção, "
-        "anomalias, fotografias, classificação "
-        "e histórico."
-    )
-
-    if oae_ativa is not None:
-
-        st.write(
-            f"**OAE:** "
-            f"{oae_ativa.nome}"
-        )
-
-    if inspecao_ativa is not None:
-
-        st.write(
-            f"**Inspeção:** "
-            f"{inspecao_ativa.tipo_inspecao} - "
-            f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
-        )
