@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import re
 
 from database import engine, Base, SessionLocal
 import models
@@ -32,6 +33,30 @@ st.set_page_config(
     page_icon="🌉",
     layout="wide"
 )
+
+
+# ============================================================
+# MENSAGENS DE CONFIRMAÇÃO
+# ============================================================
+
+def definir_mensagem_sucesso(mensagem):
+
+    st.session_state["_mensagem_sucesso"] = mensagem
+
+
+def mostrar_mensagem_sucesso():
+
+    mensagem = st.session_state.pop(
+        "_mensagem_sucesso",
+        None
+    )
+
+    if mensagem:
+
+        st.success(
+            mensagem,
+            icon="✅"
+        )
 
 
 # ============================================================
@@ -80,6 +105,83 @@ def buscar_oae_por_id(oae_id):
     return dado
 
 
+# ============================================================
+# ORDEM LÓGICA DOS COMPONENTES
+#
+# A numeração visual e os seletores não seguem mais a ordem
+# em que os registros foram cadastrados no banco.
+#
+# Exemplo:
+# se o Pilar P2 for cadastrado depois da Sinalização,
+# ele continuará aparecendo junto da Mesoestrutura.
+# ============================================================
+
+ORDEM_CATEGORIAS_COMPONENTES = {
+    "Superestrutura": 1,
+    "Mesoestrutura": 2,
+    "Infraestrutura": 3,
+    "Encontros": 4,
+    "Elementos complementares": 5,
+    "Pista / via permanente": 6,
+}
+
+
+def chave_ordenacao_natural(valor):
+
+    valor = (
+        str(valor or "")
+        .strip()
+        .lower()
+    )
+
+    partes = re.split(
+        r"(\d+)",
+        valor
+    )
+
+    chave = []
+
+    for parte in partes:
+
+        if parte.isdigit():
+
+            chave.append(
+                (
+                    0,
+                    int(parte)
+                )
+            )
+
+        else:
+
+            chave.append(
+                (
+                    1,
+                    parte
+                )
+            )
+
+    return tuple(chave)
+
+
+def chave_ordenacao_componente(componente):
+
+    ordem_categoria = (
+        ORDEM_CATEGORIAS_COMPONENTES.get(
+            componente.categoria,
+            99
+        )
+    )
+
+    return (
+        ordem_categoria,
+        chave_ordenacao_natural(
+            componente.nome
+        ),
+        componente.id
+    )
+
+
 def buscar_componentes(oae_id):
 
     db = SessionLocal()
@@ -90,13 +192,15 @@ def buscar_componentes(oae_id):
             models.Componente.oae_id
             == oae_id
         )
-        .order_by(
-            models.Componente.id
-        )
         .all()
     )
 
     db.close()
+
+    dados = sorted(
+        dados,
+        key=chave_ordenacao_componente
+    )
 
     return dados
 
@@ -1017,8 +1121,11 @@ with st.sidebar:
 
             mapa_componentes = {
                 item.id:
-                    f"{item.id} - {item.nome}"
-                for item in componentes_sidebar
+                    f"{indice} - {item.nome}"
+                for indice, item in enumerate(
+                    componentes_sidebar,
+                    start=1
+                )
             }
 
             componente_id = st.selectbox(
@@ -1710,12 +1817,19 @@ elif pagina == "🌉 Dados da OAE":
         "Dados da OAE"
     )
 
-    tab1, tab2 = st.tabs(
+    mostrar_mensagem_sucesso()
+
+    tab1, tab2, tab3 = st.tabs(
         [
             "📋 OAE selecionada",
-            "➕ Cadastrar nova OAE"
+            "➕ Cadastrar nova OAE",
+            "✏️ Editar OAE"
         ]
     )
+
+    # ========================================================
+    # OAE SELECIONADA
+    # ========================================================
 
     with tab1:
 
@@ -1738,7 +1852,7 @@ elif pagina == "🌉 Dados da OAE":
             with c1:
 
                 st.write(
-                    "**ID:**",
+                    "**ID interno:**",
                     oae_ativa.id
                 )
 
@@ -1805,6 +1919,10 @@ elif pagina == "🌉 Dados da OAE":
                 or
                 "Nenhuma observação."
             )
+
+    # ========================================================
+    # CADASTRAR NOVA OAE
+    # ========================================================
 
     with tab2:
 
@@ -1918,41 +2036,346 @@ elif pagina == "🌉 Dados da OAE":
 
                 db = SessionLocal()
 
-                nova = models.OAE(
-                    nome=nome,
-                    codigo=codigo,
-                    rodovia=rodovia,
-                    municipio=municipio,
-                    uf=uf,
-                    ano_construcao=ano,
-                    tipo_estrutura=estrutura,
-                    numero_vaos=vaos,
-                    comprimento_total=comprimento,
-                    largura=largura,
-                    tipo_protensao=protensao,
-                    observacoes=observacoes
-                )
+                try:
 
-                db.add(
-                    nova
-                )
+                    nova = models.OAE(
+                        nome=nome,
+                        codigo=codigo,
+                        rodovia=rodovia,
+                        municipio=municipio,
+                        uf=uf,
+                        ano_construcao=ano,
+                        tipo_estrutura=estrutura,
+                        numero_vaos=vaos,
+                        comprimento_total=comprimento,
+                        largura=largura,
+                        tipo_protensao=protensao,
+                        observacoes=observacoes
+                    )
 
-                db.commit()
+                    db.add(
+                        nova
+                    )
 
-                db.refresh(
-                    nova
-                )
+                    db.commit()
 
-                st.session_state.oae_ativa_id = (
-                    nova.id
-                )
+                    db.refresh(
+                        nova
+                    )
 
-                st.session_state.inspecao_ativa_id = None
-                st.session_state.componente_ativo_id = None
+                    st.session_state.oae_ativa_id = (
+                        nova.id
+                    )
+
+                    st.session_state.inspecao_ativa_id = None
+                    st.session_state.componente_ativo_id = None
+
+                    definir_mensagem_sucesso(
+                        "OAE cadastrada com sucesso."
+                    )
+
+                except Exception as erro:
+
+                    db.rollback()
+
+                    st.error(
+                        "Não foi possível salvar a OAE. "
+                        f"Detalhe: {erro}"
+                    )
+
+                    db.close()
+
+                    st.stop()
 
                 db.close()
 
                 st.rerun()
+
+    # ========================================================
+    # EDITAR OAE
+    # ========================================================
+
+    with tab3:
+
+        st.subheader(
+            "✏️ Editar OAE"
+        )
+
+        if oae_ativa is None:
+
+            st.info(
+                "Selecione uma OAE para editar."
+            )
+
+        else:
+
+            st.caption(
+                "Altere somente os campos necessários e "
+                "clique em Atualizar OAE."
+            )
+
+            lista_ufs = [
+                "AC", "AL", "AP", "AM",
+                "BA", "CE", "DF", "ES",
+                "GO", "MA", "MT", "MS",
+                "MG", "PA", "PB", "PR",
+                "PE", "PI", "RJ", "RN",
+                "RS", "RO", "RR", "SC",
+                "SP", "SE", "TO"
+            ]
+
+            lista_estruturas = [
+                "Concreto protendido",
+                "Concreto armado",
+                "Estrutura mista",
+                "Outro"
+            ]
+
+            lista_protensao = [
+                "Pré-tração",
+                "Pós-tração",
+                "Não informado",
+                "Não se aplica"
+            ]
+
+            indice_uf = (
+                lista_ufs.index(
+                    oae_ativa.uf
+                )
+                if oae_ativa.uf
+                in lista_ufs
+                else 0
+            )
+
+            indice_estrutura = (
+                lista_estruturas.index(
+                    oae_ativa.tipo_estrutura
+                )
+                if oae_ativa.tipo_estrutura
+                in lista_estruturas
+                else 0
+            )
+
+            indice_protensao = (
+                lista_protensao.index(
+                    oae_ativa.tipo_protensao
+                )
+                if oae_ativa.tipo_protensao
+                in lista_protensao
+                else 0
+            )
+
+            with st.form(
+                "form_editar_oae"
+            ):
+
+                c1, c2 = st.columns(
+                    2
+                )
+
+                with c1:
+
+                    editar_nome = st.text_input(
+                        "Nome da OAE",
+                        value=oae_ativa.nome
+                        or ""
+                    )
+
+                    editar_codigo = st.text_input(
+                        "Código",
+                        value=oae_ativa.codigo
+                        or ""
+                    )
+
+                    editar_rodovia = st.text_input(
+                        "Rodovia",
+                        value=oae_ativa.rodovia
+                        or ""
+                    )
+
+                    editar_municipio = st.text_input(
+                        "Município",
+                        value=oae_ativa.municipio
+                        or ""
+                    )
+
+                    editar_uf = st.selectbox(
+                        "UF",
+                        lista_ufs,
+                        index=indice_uf,
+                        key="editar_oae_uf"
+                    )
+
+                    editar_ano = st.number_input(
+                        "Ano de construção",
+                        min_value=1800,
+                        max_value=2100,
+                        step=1,
+                        value=int(
+                            oae_ativa.ano_construcao
+                            or 2000
+                        )
+                    )
+
+                with c2:
+
+                    editar_estrutura = st.selectbox(
+                        "Tipo estrutural",
+                        lista_estruturas,
+                        index=indice_estrutura,
+                        key="editar_oae_estrutura"
+                    )
+
+                    editar_vaos = st.number_input(
+                        "Número de vãos",
+                        min_value=1,
+                        step=1,
+                        value=int(
+                            oae_ativa.numero_vaos
+                            or 1
+                        )
+                    )
+
+                    editar_comprimento = st.number_input(
+                        "Comprimento total (m)",
+                        min_value=0.0,
+                        step=0.1,
+                        value=float(
+                            oae_ativa.comprimento_total
+                            or 0.0
+                        )
+                    )
+
+                    editar_largura = st.number_input(
+                        "Largura (m)",
+                        min_value=0.0,
+                        step=0.1,
+                        value=float(
+                            oae_ativa.largura
+                            or 0.0
+                        )
+                    )
+
+                    editar_protensao = st.selectbox(
+                        "Tipo de protensão",
+                        lista_protensao,
+                        index=indice_protensao,
+                        key="editar_oae_protensao"
+                    )
+
+                editar_observacoes = st.text_area(
+                    "Observações",
+                    value=oae_ativa.observacoes
+                    or ""
+                )
+
+                atualizar_oae = (
+                    st.form_submit_button(
+                        "Atualizar OAE"
+                    )
+                )
+
+            if atualizar_oae:
+
+                if editar_nome.strip() == "":
+
+                    st.error(
+                        "O nome da OAE não pode ficar vazio."
+                    )
+
+                else:
+
+                    db = SessionLocal()
+
+                    try:
+
+                        registro = (
+                            db.query(models.OAE)
+                            .filter(
+                                models.OAE.id
+                                == oae_ativa.id
+                            )
+                            .first()
+                        )
+
+                        if registro is None:
+
+                            st.error(
+                                "A OAE não foi encontrada."
+                            )
+
+                        else:
+
+                            registro.nome = (
+                                editar_nome
+                            )
+
+                            registro.codigo = (
+                                editar_codigo
+                            )
+
+                            registro.rodovia = (
+                                editar_rodovia
+                            )
+
+                            registro.municipio = (
+                                editar_municipio
+                            )
+
+                            registro.uf = (
+                                editar_uf
+                            )
+
+                            registro.ano_construcao = (
+                                editar_ano
+                            )
+
+                            registro.tipo_estrutura = (
+                                editar_estrutura
+                            )
+
+                            registro.numero_vaos = (
+                                editar_vaos
+                            )
+
+                            registro.comprimento_total = (
+                                editar_comprimento
+                            )
+
+                            registro.largura = (
+                                editar_largura
+                            )
+
+                            registro.tipo_protensao = (
+                                editar_protensao
+                            )
+
+                            registro.observacoes = (
+                                editar_observacoes
+                            )
+
+                            db.commit()
+
+                            definir_mensagem_sucesso(
+                                "OAE atualizada com sucesso."
+                            )
+
+                    except Exception as erro:
+
+                        db.rollback()
+
+                        st.error(
+                            "Não foi possível atualizar a OAE. "
+                            f"Detalhe: {erro}"
+                        )
+
+                        db.close()
+
+                        st.stop()
+
+                    db.close()
+
+                    st.rerun()
 
 
 # ============================================================
@@ -1964,6 +2387,8 @@ elif pagina == "🧱 Componentes":
     st.header(
         "Componentes"
     )
+
+    mostrar_mensagem_sucesso()
 
     if oae_ativa is None:
 
@@ -1979,12 +2404,17 @@ elif pagina == "🧱 Componentes":
             f"{oae_ativa.nome}"
         )
 
-        tab1, tab2 = st.tabs(
+        tab1, tab2, tab3 = st.tabs(
             [
                 "📋 Componentes cadastrados",
-                "➕ Cadastrar componente"
+                "➕ Cadastrar componente",
+                "✏️ Editar componente"
             ]
         )
+
+        # ====================================================
+        # COMPONENTES CADASTRADOS
+        # ====================================================
 
         with tab1:
 
@@ -2002,12 +2432,15 @@ elif pagina == "🧱 Componentes":
 
                 dados = []
 
-                for item in componentes:
+                for numero, item in enumerate(
+                    componentes,
+                    start=1
+                ):
 
                     dados.append(
                         {
-                            "ID":
-                                item.id,
+                            "Nº":
+                                numero,
 
                             "Categoria":
                                 item.categoria,
@@ -2028,6 +2461,21 @@ elif pagina == "🧱 Componentes":
                     width="stretch",
                     hide_index=True
                 )
+
+                st.caption(
+                    "Os componentes são organizados automaticamente "
+                    "pela estrutura da OAE: Superestrutura → "
+                    "Mesoestrutura → Infraestrutura → Encontros → "
+                    "Elementos complementares → Pista/via permanente. "
+                    "Dentro de cada grupo, os nomes são ordenados de "
+                    "forma natural (por exemplo: L1, L2, L3, L10). "
+                    "A numeração exibida é visual e própria desta OAE; "
+                    "o ID interno do banco permanece inalterado."
+                )
+
+        # ====================================================
+        # CADASTRAR COMPONENTE
+        # ====================================================
 
         with tab2:
 
@@ -2091,32 +2539,284 @@ elif pagina == "🧱 Componentes":
 
                     db = SessionLocal()
 
-                    novo = models.Componente(
-                        oae_id=oae_ativa.id,
-                        categoria=categoria,
-                        nome=nome,
-                        classificacao_elemento=
-                            classificacao,
-                        observacoes=observacoes
-                    )
+                    try:
 
-                    db.add(
-                        novo
-                    )
+                        novo = models.Componente(
+                            oae_id=oae_ativa.id,
+                            categoria=categoria,
+                            nome=nome,
+                            classificacao_elemento=
+                                classificacao,
+                            observacoes=observacoes
+                        )
 
-                    db.commit()
+                        db.add(
+                            novo
+                        )
 
-                    db.refresh(
-                        novo
-                    )
+                        db.commit()
 
-                    st.session_state.componente_ativo_id = (
-                        novo.id
-                    )
+                        db.refresh(
+                            novo
+                        )
+
+                        st.session_state.componente_ativo_id = (
+                            novo.id
+                        )
+
+                        definir_mensagem_sucesso(
+                            f'Componente "{novo.nome}" '
+                            "salvo com sucesso."
+                        )
+
+                    except Exception as erro:
+
+                        db.rollback()
+
+                        st.error(
+                            "Não foi possível salvar o componente. "
+                            f"Detalhe: {erro}"
+                        )
+
+                        db.close()
+
+                        st.stop()
 
                     db.close()
 
                     st.rerun()
+
+        # ====================================================
+        # EDITAR COMPONENTE
+        # ====================================================
+
+        with tab3:
+
+            st.subheader(
+                "✏️ Editar componente"
+            )
+
+            componentes_edicao = (
+                buscar_componentes(
+                    oae_ativa.id
+                )
+            )
+
+            if len(
+                componentes_edicao
+            ) == 0:
+
+                st.info(
+                    "Nenhum componente cadastrado "
+                    "para edição."
+                )
+
+            else:
+
+                ids_edicao = [
+                    item.id
+                    for item in componentes_edicao
+                ]
+
+                mapa_edicao = {
+                    item.id:
+                        f"{numero} - {item.nome}"
+                    for numero, item in enumerate(
+                        componentes_edicao,
+                        start=1
+                    )
+                }
+
+                componente_editar_id = (
+                    st.selectbox(
+                        "Selecione o componente",
+                        options=ids_edicao,
+                        format_func=lambda valor:
+                            mapa_edicao[valor],
+                        key="componente_editar_id"
+                    )
+                )
+
+                componente_editar = next(
+                    item
+                    for item in componentes_edicao
+                    if item.id
+                    == componente_editar_id
+                )
+
+                categorias = [
+                    "Superestrutura",
+                    "Mesoestrutura",
+                    "Infraestrutura",
+                    "Encontros",
+                    "Elementos complementares",
+                    "Pista / via permanente"
+                ]
+
+                relevancias = [
+                    "Principal",
+                    "Secundário",
+                    "Complementar",
+                    "Não informado"
+                ]
+
+                indice_categoria = (
+                    categorias.index(
+                        componente_editar.categoria
+                    )
+                    if componente_editar.categoria
+                    in categorias
+                    else 0
+                )
+
+                indice_relevancia = (
+                    relevancias.index(
+                        componente_editar.classificacao_elemento
+                    )
+                    if componente_editar.classificacao_elemento
+                    in relevancias
+                    else 0
+                )
+
+                with st.form(
+                    "form_editar_componente"
+                ):
+
+                    editar_categoria = (
+                        st.selectbox(
+                            "Categoria",
+                            categorias,
+                            index=indice_categoria,
+                            key=(
+                                "editar_componente_categoria_"
+                                f"{componente_editar.id}"
+                            )
+                        )
+                    )
+
+                    editar_nome = st.text_input(
+                        "Nome ou identificação",
+                        value=(
+                            componente_editar.nome
+                            or ""
+                        ),
+                        key=(
+                            "editar_componente_nome_"
+                            f"{componente_editar.id}"
+                        )
+                    )
+
+                    editar_relevancia = (
+                        st.selectbox(
+                            "Relevância do elemento",
+                            relevancias,
+                            index=indice_relevancia,
+                            key=(
+                                "editar_componente_relevancia_"
+                                f"{componente_editar.id}"
+                            )
+                        )
+                    )
+
+                    editar_observacoes = (
+                        st.text_area(
+                            "Observações",
+                            value=(
+                                componente_editar.observacoes
+                                or ""
+                            ),
+                            key=(
+                                "editar_componente_observacoes_"
+                                f"{componente_editar.id}"
+                            )
+                        )
+                    )
+
+                    atualizar_componente = (
+                        st.form_submit_button(
+                            "Atualizar componente"
+                        )
+                    )
+
+                if atualizar_componente:
+
+                    if editar_nome.strip() == "":
+
+                        st.error(
+                            "O nome do componente "
+                            "não pode ficar vazio."
+                        )
+
+                    else:
+
+                        db = SessionLocal()
+
+                        try:
+
+                            registro = (
+                                db.query(
+                                    models.Componente
+                                )
+                                .filter(
+                                    models.Componente.id
+                                    == componente_editar.id
+                                )
+                                .first()
+                            )
+
+                            if registro is None:
+
+                                st.error(
+                                    "O componente não foi "
+                                    "encontrado."
+                                )
+
+                            else:
+
+                                registro.categoria = (
+                                    editar_categoria
+                                )
+
+                                registro.nome = (
+                                    editar_nome
+                                )
+
+                                registro.classificacao_elemento = (
+                                    editar_relevancia
+                                )
+
+                                registro.observacoes = (
+                                    editar_observacoes
+                                )
+
+                                db.commit()
+
+                                st.session_state.componente_ativo_id = (
+                                    registro.id
+                                )
+
+                                definir_mensagem_sucesso(
+                                    f'Componente "{registro.nome}" '
+                                    "atualizado com sucesso."
+                                )
+
+                        except Exception as erro:
+
+                            db.rollback()
+
+                            st.error(
+                                "Não foi possível atualizar "
+                                "o componente. "
+                                f"Detalhe: {erro}"
+                            )
+
+                            db.close()
+
+                            st.stop()
+
+                        db.close()
+
+                        st.rerun()
 
 
 # ============================================================
