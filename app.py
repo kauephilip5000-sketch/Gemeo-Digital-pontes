@@ -239,8 +239,8 @@ def buscar_inspecoes(oae_id):
             == oae_id
         )
         .order_by(
-            models.Inspecao.data_inspecao.desc(),
-            models.Inspecao.id.desc()
+            models.Inspecao.data_inspecao.asc(),
+            models.Inspecao.id.asc()
         )
         .all()
     )
@@ -1066,11 +1066,14 @@ with st.sidebar:
             mapa_inspecoes = {
                 item.id:
                     (
-                        f"{item.id} - "
+                        f"{numero} - "
                         f"{item.tipo_inspecao} - "
                         f"{item.data_inspecao.strftime('%d/%m/%Y')}"
                     )
-                for item in inspecoes_sidebar
+                for numero, item in enumerate(
+                    inspecoes_sidebar,
+                    start=1
+                )
             }
 
             inspecao_id = st.selectbox(
