@@ -909,9 +909,7 @@ def mostrar_nova_inspecao_cadastral(
             "a uma alteração da configuração da obra."
         )
 
-    with st.form(
-        "form_nova_inspecao_cadastral"
-    ):
+    with st.container(border=True):
 
         data_inspecao = st.date_input(
             "Data da inspeção",
@@ -979,8 +977,10 @@ def mostrar_nova_inspecao_cadastral(
             )
         )
 
-        salvar = st.form_submit_button(
-            "Criar inspeção cadastral"
+        salvar = st.button(
+            "➕ Criar inspeção cadastral",
+            type="primary",
+            key=f"criar_cadastral_{oae_ativa.id}"
         )
 
     if salvar:
@@ -1119,9 +1119,7 @@ def mostrar_identificacao_localizacao(
             or "Não informado"
         )
 
-    with st.form(
-        "form_cadastral_identificacao"
-    ):
+    with st.container(border=True):
 
         c1, c2 = st.columns(2)
 
@@ -1248,8 +1246,10 @@ def mostrar_identificacao_localizacao(
                 )
             )
 
-        salvar = st.form_submit_button(
-            "Salvar identificação e localização"
+        salvar = st.button(
+            "💾 Salvar identificação e localização",
+            type="primary",
+            key=f"salvar_identificacao_{cadastro.id}"
         )
 
     if salvar:
@@ -1992,648 +1992,473 @@ def mostrar_caracteristicas_funcionais(
     )
 
     st.info(
-        "Os dados funcionais também são preenchidos conforme "
-        "a aplicabilidade. Não use 0 para representar ausência "
-        "de informação."
+        "Preenchimento direto: selecione as opções disponíveis ou digite "
+        "os valores conhecidos. Não é necessário marcar 'Informado' antes."
     )
 
     mapa_status = buscar_mapa_status(
         cadastro.id
     )
 
-    with st.form(
-        "form_cadastral_funcional"
+    st.markdown("### 🛣️ A. Pista e geometria funcional")
+    st.caption(
+        "Características do traçado, faixas, acostamentos, passeios e refúgios."
+    )
+
+    sit_plani, planialtimetricas = campo_texto_simples(
+        "Características plani-altimétricas",
+        "caracteristicas_planialtimetricas",
+        mapa_status,
+        cadastro.caracteristicas_planialtimetricas,
+        "funcional",
+        placeholder=(
+            "Ex.: região plana, traçado em tangente, sem esconsidade relevante."
+        ),
+        descricao="Descreva resumidamente relevo, traçado, esconsidade e rampa, quando conhecidos.",
+        textarea=True,
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        sit_faixas, numero_faixas = campo_numero_texto_simples(
+            "Número de faixas / vias",
+            "numero_faixas",
+            mapa_status,
+            cadastro.numero_faixas,
+            "funcional",
+            inteiro=True,
+            descricao="Quantidade total de faixas de tráfego ou vias ferroviárias.",
+            placeholder="Ex.: 2",
+        )
+
+        sit_acost, acostamento = campo_lista_simples(
+            "Acostamento",
+            "acostamento_situacao",
+            mapa_status,
+            cadastro.acostamento_situacao,
+            ["Existe em ambos os lados", "Existe em um lado", "Não existe"],
+            "funcional",
+            descricao="Indique a existência e disposição do acostamento.",
+        )
+
+        sit_larg_acost, largura_acostamento = campo_numero_texto_simples(
+            "Largura do acostamento (m)",
+            "largura_acostamento",
+            mapa_status,
+            cadastro.largura_acostamento,
+            "funcional",
+            descricao="Largura típica do acostamento, quando existente.",
+            placeholder="Ex.: 1,50",
+        )
+
+        sit_ref, refugio = campo_lista_simples(
+            "Refúgio",
+            "refugio_situacao",
+            mapa_status,
+            cadastro.refugio_situacao,
+            ["Existe", "Não existe"],
+            "funcional",
+            descricao="Indique se existe refúgio na OAE.",
+        )
+
+        sit_larg_ref, largura_refugio = campo_numero_texto_simples(
+            "Largura do refúgio (m)",
+            "largura_refugio",
+            mapa_status,
+            cadastro.largura_refugio,
+            "funcional",
+            descricao="Preencha somente quando houver refúgio.",
+            placeholder="Ex.: 0,80",
+        )
+
+    with c2:
+        sit_larg_faixa, largura_faixa = campo_numero_texto_simples(
+            "Largura da faixa / via (m)",
+            "largura_faixa",
+            mapa_status,
+            cadastro.largura_faixa,
+            "funcional",
+            descricao="Largura típica de cada faixa de tráfego.",
+            placeholder="Ex.: 3,50",
+        )
+
+        sit_passeio, passeio = campo_lista_simples(
+            "Passeio / passarela",
+            "passeio_passarela_situacao",
+            mapa_status,
+            cadastro.passeio_passarela_situacao,
+            [
+                "Passeio para pedestres",
+                "Passarela de pedestres",
+                "Passarela de manutenção",
+                "Não existe",
+            ],
+            "funcional",
+            descricao="Indique o tipo existente sobre a OAE.",
+        )
+
+        sit_larg_passeio, largura_passeio = campo_numero_texto_simples(
+            "Largura do passeio / passarela (m)",
+            "largura_passeio_passarela",
+            mapa_status,
+            cadastro.largura_passeio_passarela,
+            "funcional",
+            descricao="Preencha somente quando houver passeio ou passarela.",
+            placeholder="Ex.: 1,20",
+        )
+
+    st.divider()
+    st.markdown("### 🧱 B. Proteção, pavimento e drenagem")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        sit_barreira, barreira = campo_lista_simples(
+            "Barreira rígida",
+            "barreira_rigida_situacao",
+            mapa_status,
+            cadastro.barreira_rigida_situacao,
+            ["Existe", "Não existe"],
+            "funcional",
+            descricao="Indique a existência de barreira rígida lateral.",
+        )
+
+        sit_pav, pavimento = campo_lista_simples(
+            "Pavimento / via permanente",
+            "pavimento_via_permanente",
+            mapa_status,
+            cadastro.pavimento_via_permanente,
+            [
+                "Revestimento asfáltico",
+                "Pavimento de concreto",
+                "Via permanente sobre lastro",
+                "Via permanente sem lastro",
+                "Outro",
+            ],
+            "funcional",
+            descricao="Selecione o revestimento ou tipo de via permanente.",
+        )
+
+        sit_drenos, drenos = campo_lista_simples(
+            "Drenos",
+            "drenos_situacao",
+            mapa_status,
+            cadastro.drenos_situacao,
+            ["Existentes", "Não existentes"],
+            "funcional",
+            descricao="Indique a existência de dispositivos de drenagem no tabuleiro.",
+        )
+
+    with c2:
+        sit_guarda, guarda_corpos = campo_lista_simples(
+            "Guarda-corpos",
+            "guarda_corpos_situacao",
+            mapa_status,
+            cadastro.guarda_corpos_situacao,
+            ["Existentes", "Não existentes"],
+            "funcional",
+            descricao="Indique a existência de guarda-corpos.",
+        )
+
+        sit_ping, pingadeiras = campo_lista_simples(
+            "Pingadeiras",
+            "pingadeiras_situacao",
+            mapa_status,
+            cadastro.pingadeiras_situacao,
+            ["Existentes", "Não existentes"],
+            "funcional",
+            descricao="Indique a existência de pingadeiras ou detalhe equivalente.",
+        )
+
+    st.divider()
+    st.markdown("### 📏 C. Gabaritos")
+    st.caption("Quando não forem aplicáveis à OAE, selecione 'Não se aplica'.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        sit_gab_sob, gabarito_sob = campo_numero_texto_simples(
+            "Gabarito vertical sob a OAE (m)",
+            "gabarito_vertical_sob_oae",
+            mapa_status,
+            cadastro.gabarito_vertical_sob_oae,
+            "funcional",
+            descricao="Altura livre sob a estrutura, quando aplicável.",
+            placeholder="Ex.: 5,50",
+        )
+
+        sit_gab_sobre, gabarito_sobre = campo_numero_texto_simples(
+            "Gabarito vertical sobre a OAE (m)",
+            "gabarito_vertical_sobre_oae",
+            mapa_status,
+            cadastro.gabarito_vertical_sobre_oae,
+            "funcional",
+            descricao="Altura livre sobre a OAE, quando aplicável.",
+            placeholder="Ex.: 5,50",
+        )
+
+    with c2:
+        sit_gab_nav, gabarito_navegavel = campo_lista_simples(
+            "Gabarito navegável",
+            "gabarito_navegavel_situacao",
+            mapa_status,
+            cadastro.gabarito_navegavel_situacao,
+            ["Aplicável", "Não aplicável"],
+            "funcional",
+            descricao="Indique se há exigência de faixa navegável sob a OAE.",
+        )
+
+        sit_gab_alt, navegavel_altura = campo_numero_texto_simples(
+            "Altura do gabarito navegável (m)",
+            "gabarito_navegavel_altura",
+            mapa_status,
+            cadastro.gabarito_navegavel_altura,
+            "funcional",
+            descricao="Preencha somente quando houver gabarito navegável.",
+            placeholder="Ex.: 4,50",
+        )
+
+        sit_gab_larg, navegavel_largura = campo_numero_texto_simples(
+            "Largura do gabarito navegável (m)",
+            "gabarito_navegavel_largura",
+            mapa_status,
+            cadastro.gabarito_navegavel_largura,
+            "funcional",
+            descricao="Preencha somente quando houver gabarito navegável.",
+            placeholder="Ex.: 20,00",
+        )
+
+    st.divider()
+    st.markdown("### 🚛 D. Tráfego")
+    st.caption("Registre os dados disponíveis. Campos desconhecidos podem ficar sem informação.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        sit_freq, frequencia = campo_lista_simples(
+            "Frequência de passagem de carga especial",
+            "frequencia_carga_especial",
+            mapa_status,
+            cadastro.frequencia_carga_especial,
+            ["Muito frequente", "Frequente", "Eventual", "Rara", "Sem registro conhecido"],
+            "funcional",
+            descricao="Frequência conhecida de veículos com carga especial.",
+        )
+
+        sit_pbt, pbt = campo_numero_texto_simples(
+            "PBT máximo",
+            "pbt_maximo",
+            mapa_status,
+            cadastro.pbt_maximo,
+            "funcional",
+            descricao="Peso bruto total máximo conhecido para o trecho.",
+            placeholder="Ex.: 45,00",
+        )
+
+        sit_eixo, carga_eixo = campo_numero_texto_simples(
+            "Carga máxima por eixo",
+            "carga_maxima_eixo",
+            mapa_status,
+            cadastro.carga_maxima_eixo,
+            "funcional",
+            descricao="Carga máxima por eixo, quando conhecida.",
+            placeholder="Ex.: 10,00",
+        )
+
+    with c2:
+        sit_vmd, vmd = campo_numero_texto_simples(
+            "Volume médio diário - VMD",
+            "volume_medio_diario",
+            mapa_status,
+            cadastro.volume_medio_diario,
+            "funcional",
+            descricao="Volume médio diário de tráfego, quando disponível.",
+            placeholder="Ex.: 12000",
+        )
+
+        sit_ano_vmd, ano_vmd = campo_numero_texto_simples(
+            "Ano de referência do VMD",
+            "ano_referencia_vmd",
+            mapa_status,
+            cadastro.ano_referencia_vmd,
+            "funcional",
+            inteiro=True,
+            descricao="Ano correspondente ao VMD informado.",
+            placeholder="Ex.: 2020",
+        )
+
+    st.divider()
+
+    if st.button(
+        "💾 Salvar características funcionais",
+        type="primary",
+        key=f"salvar_funcional_{cadastro.id}",
     ):
-
-        # ----------------------------------------------------
-        # PISTA
-        # ----------------------------------------------------
-
-        with st.expander(
-            "🛣️ Características da pista",
-            expanded=True
-        ):
-
-            sit_plani, planialtimetricas = (
-                campo_texto_condicional(
-                    "Características plani-altimétricas",
-                    "caracteristicas_planialtimetricas",
-                    mapa_status,
-                    cadastro.caracteristicas_planialtimetricas,
-                    "funcional",
-                    placeholder=(
-                        "Ex.: região ondulada, traçado em curva, "
-                        "rampa longitudinal de 2,5%."
-                    ),
-                    textarea=True
-                )
-            )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                sit_faixas, numero_faixas = (
-                    campo_numerico_condicional(
-                        "Número de faixas / vias",
-                        "numero_faixas",
-                        mapa_status,
-                        cadastro.numero_faixas,
-                        "funcional",
-                        inteiro=True
-                    )
-                )
-
-            with c2:
-
-                sit_larg_faixa, largura_faixa = (
-                    campo_numerico_condicional(
-                        "Largura da faixa / via (m)",
-                        "largura_faixa",
-                        mapa_status,
-                        cadastro.largura_faixa,
-                        "funcional"
-                    )
-                )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                sit_acost, acostamento = (
-                    campo_texto_condicional(
-                        "Acostamento",
-                        "acostamento_situacao",
-                        mapa_status,
-                        cadastro.acostamento_situacao,
-                        "funcional",
-                        placeholder=(
-                            "Ex.: existe em ambos os lados"
-                        )
-                    )
-                )
-
-                sit_larg_acost, largura_acostamento = (
-                    campo_numerico_condicional(
-                        "Largura do acostamento (m)",
-                        "largura_acostamento",
-                        mapa_status,
-                        cadastro.largura_acostamento,
-                        "funcional"
-                    )
-                )
-
-                sit_ref, refugio = (
-                    campo_texto_condicional(
-                        "Refúgio",
-                        "refugio_situacao",
-                        mapa_status,
-                        cadastro.refugio_situacao,
-                        "funcional",
-                        placeholder="Ex.: inexistente"
-                    )
-                )
-
-                sit_larg_ref, largura_refugio = (
-                    campo_numerico_condicional(
-                        "Largura do refúgio (m)",
-                        "largura_refugio",
-                        mapa_status,
-                        cadastro.largura_refugio,
-                        "funcional"
-                    )
-                )
-
-            with c2:
-
-                sit_passeio, passeio = (
-                    campo_texto_condicional(
-                        "Passeio / passarela",
-                        "passeio_passarela_situacao",
-                        mapa_status,
-                        cadastro.passeio_passarela_situacao,
-                        "funcional",
-                        placeholder=(
-                            "Ex.: passeio lateral para pedestres"
-                        )
-                    )
-                )
-
-                sit_larg_passeio, largura_passeio = (
-                    campo_numerico_condicional(
-                        "Largura do passeio / passarela (m)",
-                        "largura_passeio_passarela",
-                        mapa_status,
-                        cadastro.largura_passeio_passarela,
-                        "funcional"
-                    )
-                )
-
-        # ----------------------------------------------------
-        # ELEMENTOS FUNCIONAIS
-        # ----------------------------------------------------
-
-        with st.expander(
-            "🧱 Elementos funcionais",
-            expanded=False
-        ):
-
-            sit_barreira, barreira = (
-                campo_texto_condicional(
-                    "Barreira rígida",
-                    "barreira_rigida_situacao",
-                    mapa_status,
-                    cadastro.barreira_rigida_situacao,
-                    "funcional",
-                    placeholder=(
-                        "Ex.: barreira New Jersey"
-                    )
-                )
-            )
-
-            sit_guarda, guarda_corpos = (
-                campo_texto_condicional(
-                    "Guarda-corpos",
-                    "guarda_corpos_situacao",
-                    mapa_status,
-                    cadastro.guarda_corpos_situacao,
-                    "funcional",
-                    placeholder=(
-                        "Ex.: guarda-corpo metálico"
-                    )
-                )
-            )
-
-            sit_pav, pavimento = (
-                campo_texto_condicional(
-                    "Pavimento / via permanente",
-                    "pavimento_via_permanente",
-                    mapa_status,
-                    cadastro.pavimento_via_permanente,
-                    "funcional",
-                    placeholder=(
-                        "Ex.: revestimento asfáltico"
-                    ),
-                    textarea=True
-                )
-            )
-
-            sit_drenos, drenos = (
-                campo_texto_condicional(
-                    "Drenos",
-                    "drenos_situacao",
-                    mapa_status,
-                    cadastro.drenos_situacao,
-                    "funcional",
-                    placeholder=(
-                        "Ex.: buzinotes distribuídos no tabuleiro"
-                    )
-                )
-            )
-
-            sit_ping, pingadeiras = (
-                campo_texto_condicional(
-                    "Pingadeiras",
-                    "pingadeiras_situacao",
-                    mapa_status,
-                    cadastro.pingadeiras_situacao,
-                    "funcional",
-                    placeholder="Ex.: existentes"
-                )
-            )
-
-        # ----------------------------------------------------
-        # GABARITOS
-        # ----------------------------------------------------
-
-        with st.expander(
-            "📏 Gabaritos",
-            expanded=False
-        ):
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                sit_gab_sob, gabarito_sob = (
-                    campo_numerico_condicional(
-                        "Gabarito vertical sob a OAE (m)",
-                        "gabarito_vertical_sob_oae",
-                        mapa_status,
-                        cadastro.gabarito_vertical_sob_oae,
-                        "funcional"
-                    )
-                )
-
-                sit_gab_sobre, gabarito_sobre = (
-                    campo_numerico_condicional(
-                        "Gabarito vertical sobre a OAE (m)",
-                        "gabarito_vertical_sobre_oae",
-                        mapa_status,
-                        cadastro.gabarito_vertical_sobre_oae,
-                        "funcional"
-                    )
-                )
-
-            with c2:
-
-                sit_gab_nav, gabarito_navegavel = (
-                    campo_texto_condicional(
-                        "Gabarito navegável",
-                        "gabarito_navegavel_situacao",
-                        mapa_status,
-                        cadastro.gabarito_navegavel_situacao,
-                        "funcional",
-                        placeholder=(
-                            "Ex.: canal navegável sinalizado"
-                        )
-                    )
-                )
-
-                sit_gab_alt, navegavel_altura = (
-                    campo_numerico_condicional(
-                        "Altura do gabarito navegável (m)",
-                        "gabarito_navegavel_altura",
-                        mapa_status,
-                        cadastro.gabarito_navegavel_altura,
-                        "funcional"
-                    )
-                )
-
-                sit_gab_larg, navegavel_largura = (
-                    campo_numerico_condicional(
-                        "Largura do gabarito navegável (m)",
-                        "gabarito_navegavel_largura",
-                        mapa_status,
-                        cadastro.gabarito_navegavel_largura,
-                        "funcional"
-                    )
-                )
-
-        # ----------------------------------------------------
-        # TRÁFEGO
-        # ----------------------------------------------------
-
-        with st.expander(
-            "🚛 Tráfego",
-            expanded=False
-        ):
-
-            st.caption(
-                "A ficha cadastral da NBR 9452 inclui dados "
-                "de tráfego. Quando o dado não estiver disponível, "
-                "marque 'Não informado' ou 'Não verificado'."
-            )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                sit_freq, frequencia = (
-                    campo_texto_condicional(
-                        "Frequência de passagem de carga especial",
-                        "frequencia_carga_especial",
-                        mapa_status,
-                        cadastro.frequencia_carga_especial,
-                        "funcional",
-                        placeholder=(
-                            "Ex.: eventual / mensal"
-                        )
-                    )
-                )
-
-                sit_pbt, pbt = (
-                    campo_numerico_condicional(
-                        "PBT máximo",
-                        "pbt_maximo",
-                        mapa_status,
-                        cadastro.pbt_maximo,
-                        "funcional"
-                    )
-                )
-
-                sit_eixo, carga_eixo = (
-                    campo_numerico_condicional(
-                        "Carga máxima por eixo",
-                        "carga_maxima_eixo",
-                        mapa_status,
-                        cadastro.carga_maxima_eixo,
-                        "funcional"
-                    )
-                )
-
-            with c2:
-
-                sit_vmd, vmd = (
-                    campo_numerico_condicional(
-                        "Volume médio diário - VMD",
-                        "volume_medio_diario",
-                        mapa_status,
-                        cadastro.volume_medio_diario,
-                        "funcional",
-                        step=1.0
-                    )
-                )
-
-                sit_ano_vmd, ano_vmd = (
-                    campo_numerico_condicional(
-                        "Ano de referência do VMD",
-                        "ano_referencia_vmd",
-                        mapa_status,
-                        cadastro.ano_referencia_vmd,
-                        "funcional",
-                        inteiro=True
-                    )
-                )
-
-        salvar = st.form_submit_button(
-            "Salvar características funcionais"
-        )
-
-    if salvar:
-
         db = SessionLocal()
-
-        registro = (
-            db.query(models.InspecaoCadastral)
-            .filter(
-                models.InspecaoCadastral.id
-                == cadastro.id
-            )
-            .first()
-        )
-
-        valores = {
-            "caracteristicas_planialtimetricas":
-                (sit_plani, planialtimetricas),
-
-            "numero_faixas":
-                (sit_faixas, numero_faixas),
-
-            "largura_faixa":
-                (sit_larg_faixa, largura_faixa),
-
-            "acostamento_situacao":
-                (sit_acost, acostamento),
-
-            "largura_acostamento":
-                (sit_larg_acost, largura_acostamento),
-
-            "refugio_situacao":
-                (sit_ref, refugio),
-
-            "largura_refugio":
-                (sit_larg_ref, largura_refugio),
-
-            "passeio_passarela_situacao":
-                (sit_passeio, passeio),
-
-            "largura_passeio_passarela":
-                (sit_larg_passeio, largura_passeio),
-
-            "barreira_rigida_situacao":
-                (sit_barreira, barreira),
-
-            "guarda_corpos_situacao":
-                (sit_guarda, guarda_corpos),
-
-            "pavimento_via_permanente":
-                (sit_pav, pavimento),
-
-            "drenos_situacao":
-                (sit_drenos, drenos),
-
-            "pingadeiras_situacao":
-                (sit_ping, pingadeiras),
-
-            "gabarito_vertical_sob_oae":
-                (sit_gab_sob, gabarito_sob),
-
-            "gabarito_vertical_sobre_oae":
-                (sit_gab_sobre, gabarito_sobre),
-
-            "gabarito_navegavel_situacao":
-                (sit_gab_nav, gabarito_navegavel),
-
-            "gabarito_navegavel_altura":
-                (sit_gab_alt, navegavel_altura),
-
-            "gabarito_navegavel_largura":
-                (sit_gab_larg, navegavel_largura),
-
-            "frequencia_carga_especial":
-                (sit_freq, frequencia),
-
-            "pbt_maximo":
-                (sit_pbt, pbt),
-
-            "carga_maxima_eixo":
-                (sit_eixo, carga_eixo),
-
-            "volume_medio_diario":
-                (sit_vmd, vmd),
-
-            "ano_referencia_vmd":
-                (sit_ano_vmd, ano_vmd)
-        }
-
-        for campo, (
-            situacao,
-            valor
-        ) in valores.items():
-
-            salvar_status(
-                db,
-                cadastro.id,
-                campo,
-                situacao
+        try:
+            registro = (
+                db.query(models.InspecaoCadastral)
+                .filter(models.InspecaoCadastral.id == cadastro.id)
+                .first()
             )
 
-            setattr(
-                registro,
-                campo,
-                (
-                    valor
-                    if situacao == "Informado"
-                    else None
-                )
-            )
+            valores = {
+                "caracteristicas_planialtimetricas": (sit_plani, planialtimetricas),
+                "numero_faixas": (sit_faixas, numero_faixas),
+                "largura_faixa": (sit_larg_faixa, largura_faixa),
+                "acostamento_situacao": (sit_acost, acostamento),
+                "largura_acostamento": (sit_larg_acost, largura_acostamento),
+                "refugio_situacao": (sit_ref, refugio),
+                "largura_refugio": (sit_larg_ref, largura_refugio),
+                "passeio_passarela_situacao": (sit_passeio, passeio),
+                "largura_passeio_passarela": (sit_larg_passeio, largura_passeio),
+                "barreira_rigida_situacao": (sit_barreira, barreira),
+                "guarda_corpos_situacao": (sit_guarda, guarda_corpos),
+                "pavimento_via_permanente": (sit_pav, pavimento),
+                "drenos_situacao": (sit_drenos, drenos),
+                "pingadeiras_situacao": (sit_ping, pingadeiras),
+                "gabarito_vertical_sob_oae": (sit_gab_sob, gabarito_sob),
+                "gabarito_vertical_sobre_oae": (sit_gab_sobre, gabarito_sobre),
+                "gabarito_navegavel_situacao": (sit_gab_nav, gabarito_navegavel),
+                "gabarito_navegavel_altura": (sit_gab_alt, navegavel_altura),
+                "gabarito_navegavel_largura": (sit_gab_larg, navegavel_largura),
+                "frequencia_carga_especial": (sit_freq, frequencia),
+                "pbt_maximo": (sit_pbt, pbt),
+                "carga_maxima_eixo": (sit_eixo, carga_eixo),
+                "volume_medio_diario": (sit_vmd, vmd),
+                "ano_referencia_vmd": (sit_ano_vmd, ano_vmd),
+            }
 
-        db.commit()
+            for campo, (situacao, valor) in valores.items():
+                salvar_status(db, cadastro.id, campo, situacao)
+                setattr(registro, campo, valor if situacao == "Informado" else None)
+
+            db.commit()
+            st.session_state["_mensagem_cadastral"] = "Características funcionais salvas com sucesso."
+        except Exception as erro:
+            db.rollback()
+            st.error(f"Não foi possível salvar as características funcionais. Detalhe: {erro}")
+            db.close()
+            return
         db.close()
-
-        st.success(
-            "Características funcionais salvas."
-        )
-
         st.rerun()
 
-
-# ============================================================
-# AMBIENTAL
-# ============================================================
 
 def mostrar_caracteristicas_ambientais(
     cadastro
 ):
 
-    st.subheader(
-        "4️⃣ Características ambientais"
+    st.subheader("4️⃣ Características ambientais")
+    st.info(
+        "Preenchimento direto. Selecione as opções conhecidas e descreva apenas "
+        "as informações relevantes ao ambiente da OAE."
     )
 
-    st.caption(
-        "A classificação do grau de agressividade deve seguir "
-        "a referência indicada pela ficha cadastral."
+    agressividade_opcoes = [
+        "Não informada",
+        "Fraca",
+        "Moderada",
+        "Forte",
+        "Muito forte",
+    ]
+    agressividade_atual = cadastro.grau_agressividade_ambiental or "Não informada"
+    if agressividade_atual not in agressividade_opcoes:
+        agressividade_atual = "Não informada"
+
+    st.markdown("### 🌦️ A. Exposição ambiental")
+    agressividade = st.selectbox(
+        "Grau de agressividade ambiental",
+        agressividade_opcoes,
+        index=agressividade_opcoes.index(agressividade_atual),
+        key=f"ambiental_agressividade_{cadastro.id}",
+        help="Selecione conforme a informação disponível para o cadastro. A validação técnica permanece sob responsabilidade profissional.",
     )
 
-    with st.form(
-        "form_cadastral_ambiental"
-    ):
+    curso_opcoes = ["Sim", "Não", "Não verificado"]
+    curso_atual = cadastro.curso_agua_aplicavel or "Não verificado"
+    if curso_atual not in curso_opcoes:
+        curso_atual = "Não verificado"
 
-        agressividade_opcoes = [
-            "Não informada",
-            "Fraca",
-            "Moderada",
-            "Forte",
-            "Muito forte"
-        ]
+    curso_agua = st.selectbox(
+        "Há curso d'água associado à transposição?",
+        curso_opcoes,
+        index=curso_opcoes.index(curso_atual),
+        key=f"ambiental_curso_{cadastro.id}",
+    )
 
-        agressividade_atual = (
-            cadastro.grau_agressividade_ambiental
-            or "Não informada"
-        )
-
-        agressividade = st.selectbox(
-            "Grau de agressividade ambiental",
-            agressividade_opcoes,
-            index=(
-                agressividade_opcoes.index(
-                    agressividade_atual
-                )
-                if agressividade_atual
-                in agressividade_opcoes
-                else 0
-            )
-        )
-
-        curso_opcoes = [
-            "Não verificado",
-            "Sim",
-            "Não"
-        ]
-
-        curso_atual = (
-            cadastro.curso_agua_aplicavel
-            or "Não verificado"
-        )
-
-        curso_agua = st.selectbox(
-            "Caracterização de curso d'água aplicável",
-            curso_opcoes,
-            index=(
-                curso_opcoes.index(
-                    curso_atual
-                )
-                if curso_atual
-                in curso_opcoes
-                else 0
-            )
-        )
-
+    nome_curso = ""
+    if curso_agua == "Sim":
         nome_curso = st.text_input(
             "Nome do curso d'água",
-            value=(
-                cadastro.nome_curso_agua
-                or ""
-            ),
-            placeholder="Ex.: Rio São Marcos"
+            value=cadastro.nome_curso_agua or "",
+            placeholder="Ex.: Córrego Boa Vista",
+            key=f"ambiental_nome_curso_{cadastro.id}",
         )
+    elif curso_agua == "Não":
+        st.caption("Nome do curso d'água não se aplica.")
+    else:
+        st.caption("O curso d'água ainda não foi verificado.")
 
-        inundacao = st.text_area(
-            "Histórico de inundação no local",
-            value=(
-                cadastro.historico_inundacao
-                or ""
-            ),
-            placeholder=(
-                "Ex.: sem registros conhecidos, "
-                "ou descrever eventos conhecidos."
-            )
-        )
+    inundacao = st.text_area(
+        "Histórico de inundação no local",
+        value=cadastro.historico_inundacao or "",
+        placeholder="Ex.: sem registros conhecidos no estudo de caso.",
+        key=f"ambiental_inundacao_{cadastro.id}",
+    )
 
-        informacoes = st.text_area(
-            "Informações complementares",
-            value=(
-                cadastro.informacoes_complementares
-                or ""
-            )
-        )
+    st.divider()
+    st.markdown("### 📝 B. Informações complementares")
 
-        recomendacoes = st.text_area(
-            "Recomendações terapêuticas",
-            value=(
-                cadastro.recomendacoes_terapeuticas
-                or ""
-            )
-        )
+    informacoes = st.text_area(
+        "Informações complementares",
+        value=cadastro.informacoes_complementares or "",
+        placeholder="Registre condições ambientais ou funcionais relevantes que não aparecem nos campos anteriores.",
+        key=f"ambiental_info_{cadastro.id}",
+    )
 
-        observacoes = st.text_area(
-            "Observações do cadastro",
-            value=(
-                cadastro.observacoes_cadastro
-                or ""
-            )
-        )
+    recomendacoes = st.text_area(
+        "Recomendações iniciais",
+        value=cadastro.recomendacoes_terapeuticas or "",
+        placeholder="Registre recomendações apenas quando justificadas pela inspeção.",
+        key=f"ambiental_rec_{cadastro.id}",
+    )
 
-        salvar = st.form_submit_button(
-            "Salvar dados ambientais e complementares"
-        )
+    observacoes = st.text_area(
+        "Observações do cadastro",
+        value=cadastro.observacoes_cadastro or "",
+        placeholder="Observações gerais desta etapa cadastral.",
+        key=f"ambiental_obs_{cadastro.id}",
+    )
 
-    if salvar:
-
+    if st.button(
+        "💾 Salvar dados ambientais e complementares",
+        type="primary",
+        key=f"salvar_ambiental_{cadastro.id}",
+    ):
         db = SessionLocal()
-
-        registro = (
-            db.query(models.InspecaoCadastral)
-            .filter(
-                models.InspecaoCadastral.id
-                == cadastro.id
+        try:
+            registro = (
+                db.query(models.InspecaoCadastral)
+                .filter(models.InspecaoCadastral.id == cadastro.id)
+                .first()
             )
-            .first()
-        )
-
-        registro.grau_agressividade_ambiental = (
-            agressividade
-            if agressividade != "Não informada"
-            else None
-        )
-
-        registro.curso_agua_aplicavel = curso_agua
-        registro.nome_curso_agua = nome_curso
-        registro.historico_inundacao = inundacao
-        registro.informacoes_complementares = (
-            informacoes
-        )
-        registro.recomendacoes_terapeuticas = (
-            recomendacoes
-        )
-        registro.observacoes_cadastro = (
-            observacoes
-        )
-
-        db.commit()
+            registro.grau_agressividade_ambiental = (
+                agressividade if agressividade != "Não informada" else None
+            )
+            registro.curso_agua_aplicavel = curso_agua
+            registro.nome_curso_agua = nome_curso if curso_agua == "Sim" else None
+            registro.historico_inundacao = inundacao
+            registro.informacoes_complementares = informacoes
+            registro.recomendacoes_terapeuticas = recomendacoes
+            registro.observacoes_cadastro = observacoes
+            db.commit()
+            st.session_state["_mensagem_cadastral"] = "Dados ambientais e complementares salvos com sucesso."
+        except Exception as erro:
+            db.rollback()
+            st.error(f"Não foi possível salvar os dados ambientais. Detalhe: {erro}")
+            db.close()
+            return
         db.close()
-
-        st.success(
-            "Dados ambientais e complementares salvos."
-        )
-
         st.rerun()
 
-
-# ============================================================
-# DOCUMENTOS
-# ============================================================
 
 def mostrar_documentos(cadastro):
 
@@ -2641,16 +2466,14 @@ def mostrar_documentos(cadastro):
         "5️⃣ Documentos iniciais"
     )
 
-    st.caption(
-        "Registre a situação de cada documento. "
-        "A ausência do documento não deve impedir o cadastro; "
-        "ela deve ficar registrada."
+    st.info(
+        "Registre a situação de cada documento disponível para a OAE. "
+        "O quadro abaixo mostra imediatamente o que já foi conferido e "
+        "o que ainda está pendente."
     )
 
-    existentes = (
-        buscar_documentos_cadastrais(
-            cadastro.id
-        )
+    existentes = buscar_documentos_cadastrais(
+        cadastro.id
     )
 
     mapa = {
@@ -2658,63 +2481,253 @@ def mostrar_documentos(cadastro):
         for item in existentes
     }
 
+    # --------------------------------------------------------
+    # RESUMO
+    # --------------------------------------------------------
+
+    total = len(
+        TIPOS_DOCUMENTOS
+    )
+
+    disponiveis = 0
+    nao_localizados = 0
+    nao_se_aplica = 0
+    nao_verificados = 0
+
+    linhas_resumo = []
+
+    icones = {
+        "Disponível": "✅",
+        "Não localizado": "⚠️",
+        "Não se aplica": "➖",
+        "Não verificado": "⏳",
+    }
+
     for indice, tipo in enumerate(
         TIPOS_DOCUMENTOS,
         start=1
     ):
 
-        existente = mapa.get(tipo)
+        existente = mapa.get(
+            tipo
+        )
+
+        situacao = (
+            existente.situacao
+            if existente is not None
+            and existente.situacao
+            else "Não verificado"
+        )
+
+        if situacao == "Disponível":
+            disponiveis += 1
+
+        elif situacao == "Não localizado":
+            nao_localizados += 1
+
+        elif situacao == "Não se aplica":
+            nao_se_aplica += 1
+
+        else:
+            nao_verificados += 1
+
+        arquivo = (
+            existente.nome_arquivo
+            if existente is not None
+            and existente.nome_arquivo
+            else "—"
+        )
+
+        linhas_resumo.append(
+            {
+                "Nº": indice,
+                "Documento": tipo,
+                "Situação":
+                    f"{icones.get(situacao, '•')} {situacao}",
+                "Arquivo": arquivo,
+            }
+        )
+
+    conferidos = (
+        total
+        - nao_verificados
+    )
+
+    c1, c2, c3, c4 = st.columns(
+        4
+    )
+
+    with c1:
+
+        st.metric(
+            "Conferidos",
+            f"{conferidos}/{total}"
+        )
+
+    with c2:
+
+        st.metric(
+            "Disponíveis",
+            disponiveis
+        )
+
+    with c3:
+
+        st.metric(
+            "Não localizados",
+            nao_localizados
+        )
+
+    with c4:
+
+        st.metric(
+            "Não se aplica",
+            nao_se_aplica
+        )
+
+    if total > 0:
+
+        st.progress(
+            conferidos / total
+        )
+
+    if nao_verificados == 0:
+
+        st.success(
+            "Todos os documentos iniciais tiveram sua situação registrada."
+        )
+
+    else:
+
+        st.warning(
+            f"Ainda há {nao_verificados} documento(s) sem conferência."
+        )
+
+    st.dataframe(
+        linhas_resumo,
+        width="stretch",
+        hide_index=True
+    )
+
+    st.caption(
+        "✅ Disponível = documento localizado. "
+        "⚠️ Não localizado = documento previsto, mas não encontrado. "
+        "➖ Não se aplica = documento não pertinente ao caso. "
+        "⏳ Não verificado = situação ainda não conferida."
+    )
+
+    st.divider()
+
+    st.markdown(
+        "### 📝 Conferência e edição dos documentos"
+    )
+
+    documento_aberto = st.session_state.get(
+        f"_documento_aberto_{cadastro.id}",
+        None
+    )
+
+    for indice, tipo in enumerate(
+        TIPOS_DOCUMENTOS,
+        start=1
+    ):
+
+        existente = mapa.get(
+            tipo
+        )
+
+        situacao_atual = (
+            existente.situacao
+            if existente is not None
+            and existente.situacao
+            else "Não verificado"
+        )
+
+        descricao_atual = (
+            existente.descricao
+            if existente is not None
+            and existente.descricao
+            else ""
+        )
+
+        icone = icones.get(
+            situacao_atual,
+            "•"
+        )
+
+        titulo = (
+            f"{icone} {indice}. {tipo} "
+            f"— {situacao_atual}"
+        )
 
         with st.expander(
-            f"{indice}. {tipo}",
-            expanded=False
+            titulo,
+            expanded=(
+                documento_aberto
+                == indice
+            )
         ):
 
-            situacao_atual = (
-                existente.situacao
-                if existente is not None
-                else "Não verificado"
+            st.caption(
+                "Selecione a situação atual do documento. "
+                "Se estiver disponível, você pode anexar o arquivo."
             )
 
-            descricao_atual = (
-                existente.descricao
-                if existente is not None
-                and existente.descricao
-                else ""
+            situacao = st.selectbox(
+                "Situação do documento",
+                SITUACOES_DOCUMENTO,
+                index=(
+                    SITUACOES_DOCUMENTO.index(
+                        situacao_atual
+                    )
+                    if situacao_atual
+                    in SITUACOES_DOCUMENTO
+                    else 0
+                ),
+                key=(
+                    f"doc_situacao_"
+                    f"{cadastro.id}_{indice}"
+                ),
             )
 
-            with st.form(
-                f"form_documento_{indice}"
+            descricao = st.text_area(
+                "Descrição / observações",
+                value=descricao_atual,
+                placeholder=(
+                    "Ex.: documento não localizado no acervo disponível."
+                ),
+                key=(
+                    f"doc_descricao_"
+                    f"{cadastro.id}_{indice}"
+                ),
+            )
+
+            arquivo = st.file_uploader(
+                "Anexar arquivo, se disponível",
+                key=(
+                    f"documento_"
+                    f"{cadastro.id}_{indice}"
+                ),
+            )
+
+            if (
+                existente is not None
+                and existente.nome_arquivo
             ):
 
-                situacao = st.selectbox(
-                    "Situação",
-                    SITUACOES_DOCUMENTO,
-                    index=(
-                        SITUACOES_DOCUMENTO.index(
-                            situacao_atual
-                        )
-                        if situacao_atual
-                        in SITUACOES_DOCUMENTO
-                        else 3
-                    )
+                st.success(
+                    "Arquivo vinculado: "
+                    f"{existente.nome_arquivo}"
                 )
 
-                descricao = st.text_area(
-                    "Descrição / observações",
-                    value=descricao_atual
-                )
-
-                arquivo = st.file_uploader(
-                    "Anexar documento",
-                    key=f"documento_{indice}"
-                )
-
-                salvar = st.form_submit_button(
-                    "Salvar documento"
-                )
-
-            if salvar:
+            if st.button(
+                "💾 Salvar este documento",
+                type="primary",
+                key=(
+                    f"doc_salvar_"
+                    f"{cadastro.id}_{indice}"
+                ),
+            ):
 
                 nome_arquivo = None
                 caminho_arquivo = None
@@ -2736,11 +2749,13 @@ def mostrar_documentos(cadastro):
                         models.DocumentoCadastral
                     )
                     .filter(
-                        models.DocumentoCadastral.inspecao_cadastral_id
+                        models.DocumentoCadastral
+                        .inspecao_cadastral_id
                         == cadastro.id
                     )
                     .filter(
-                        models.DocumentoCadastral.tipo_documento
+                        models.DocumentoCadastral
+                        .tipo_documento
                         == tipo
                     )
                     .first()
@@ -2748,24 +2763,33 @@ def mostrar_documentos(cadastro):
 
                 if registro is None:
 
-                    registro = models.DocumentoCadastral(
-                        inspecao_cadastral_id=
-                            cadastro.id,
-                        tipo_documento=tipo,
-                        situacao=situacao,
-                        descricao=descricao,
-                        nome_arquivo=
-                            nome_arquivo,
-                        caminho_arquivo=
-                            caminho_arquivo
+                    registro = (
+                        models.DocumentoCadastral(
+                            inspecao_cadastral_id=
+                                cadastro.id,
+                            tipo_documento=tipo,
+                            situacao=situacao,
+                            descricao=descricao,
+                            nome_arquivo=
+                                nome_arquivo,
+                            caminho_arquivo=
+                                caminho_arquivo,
+                        )
                     )
 
-                    db.add(registro)
+                    db.add(
+                        registro
+                    )
 
                 else:
 
-                    registro.situacao = situacao
-                    registro.descricao = descricao
+                    registro.situacao = (
+                        situacao
+                    )
+
+                    registro.descricao = (
+                        descricao
+                    )
 
                     if nome_arquivo is not None:
 
@@ -2780,127 +2804,193 @@ def mostrar_documentos(cadastro):
                 db.commit()
                 db.close()
 
-                st.success(
-                    "Documento atualizado."
+                # Mantém o usuário na aba Documentos
+                # e deixa o item recém-salvo aberto.
+                st.session_state[
+                    f"_documento_aberto_{cadastro.id}"
+                ] = indice
+
+                st.session_state[
+                    "_mensagem_cadastral"
+                ] = (
+                    f'Documento "{tipo}" '
+                    "atualizado com sucesso."
                 )
 
                 st.rerun()
 
-            if existente is not None:
-
-                st.write(
-                    "**Situação atual:**",
-                    existente.situacao
-                )
-
-                if existente.nome_arquivo:
-
-                    st.write(
-                        "**Arquivo anexado:**",
-                        existente.nome_arquivo
-                    )
-
-
-# ============================================================
-# CROQUIS
-# ============================================================
 
 def mostrar_croquis(cadastro):
 
-    st.subheader(
-        "6️⃣ Croquis"
+    st.subheader("6️⃣ Croquis")
+    st.info(
+        "Registre a situação dos croquis previstos no cadastro. "
+        "O quadro abaixo resume imediatamente o que já foi anexado, "
+        "o que ainda está pendente e o que não se aplica."
     )
 
-    st.caption(
-        "A ficha cadastral prevê planta do tabuleiro, "
-        "corte longitudinal, corte transversal e detalhes "
-        "adicionais quando relevantes."
-    )
+    existentes = buscar_croquis_cadastrais(cadastro.id)
+    mapa = {item.tipo_croqui: item for item in existentes}
 
-    existentes = (
-        buscar_croquis_cadastrais(
-            cadastro.id
-        )
-    )
+    total = len(TIPOS_CROQUIS)
+    anexados = 0
+    pendentes = 0
+    nao_se_aplica = 0
 
-    mapa = {
-        item.tipo_croqui: item
-        for item in existentes
+    icones = {
+        "Anexado": "✅",
+        "Pendente": "⏳",
+        "Não se aplica": "➖",
     }
 
-    for indice, tipo in enumerate(
-        TIPOS_CROQUIS,
-        start=1
-    ):
+    linhas_resumo = []
+
+    for indice, tipo in enumerate(TIPOS_CROQUIS, start=1):
 
         existente = mapa.get(tipo)
 
+        situacao = (
+            existente.situacao
+            if existente is not None
+            and existente.situacao
+            else "Pendente"
+        )
+
+        if situacao == "Anexado":
+            anexados += 1
+        elif situacao == "Não se aplica":
+            nao_se_aplica += 1
+        else:
+            pendentes += 1
+
+        arquivo = (
+            existente.nome_arquivo
+            if existente is not None
+            and existente.nome_arquivo
+            else "—"
+        )
+
+        linhas_resumo.append(
+            {
+                "Nº": indice,
+                "Croqui": tipo,
+                "Situação": f"{icones.get(situacao, '•')} {situacao}",
+                "Arquivo": arquivo,
+            }
+        )
+
+    tratados = anexados + nao_se_aplica
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric("Tratados", f"{tratados}/{total}")
+
+    with c2:
+        st.metric("Anexados", anexados)
+
+    with c3:
+        st.metric("Pendentes", pendentes)
+
+    with c4:
+        st.metric("Não se aplica", nao_se_aplica)
+
+    if total > 0:
+        st.progress(tratados / total)
+
+    if pendentes == 0:
+        st.success("Todos os croquis previstos já tiveram sua situação registrada.")
+    else:
+        st.warning(f"Ainda há {pendentes} croqui(s) pendente(s).")
+
+    st.dataframe(
+        linhas_resumo,
+        width="stretch",
+        hide_index=True,
+    )
+
+    st.caption(
+        "✅ Anexado = arquivo já vinculado. "
+        "⏳ Pendente = croqui previsto, mas ainda não anexado. "
+        "➖ Não se aplica = croqui não pertinente ao estudo de caso."
+    )
+
+    st.divider()
+
+    st.markdown("### 📝 Conferência e edição dos croquis")
+
+    croqui_aberto = st.session_state.get(
+        f"_croqui_aberto_{cadastro.id}",
+        None
+    )
+
+    for indice, tipo in enumerate(TIPOS_CROQUIS, start=1):
+
+        existente = mapa.get(tipo)
+
+        situacao_atual = (
+            existente.situacao
+            if existente is not None
+            and existente.situacao
+            else "Pendente"
+        )
+
+        descricao_atual = (
+            existente.descricao
+            if existente is not None
+            and existente.descricao
+            else ""
+        )
+
+        titulo = f"{icones.get(situacao_atual, '•')} {indice}. {tipo} — {situacao_atual}"
+
         with st.expander(
-            tipo,
-            expanded=False
+            titulo,
+            expanded=(croqui_aberto == indice)
         ):
 
-            situacao_atual = (
-                existente.situacao
-                if existente is not None
-                else "Pendente"
+            st.caption(
+                "Descreva resumidamente o conteúdo do croqui "
+                "e anexe o arquivo quando ele estiver disponível."
             )
 
-            descricao_atual = (
-                existente.descricao
-                if existente is not None
-                and existente.descricao
-                else ""
+            situacao = st.selectbox(
+                "Situação do croqui",
+                SITUACOES_CROQUI,
+                index=(
+                    SITUACOES_CROQUI.index(situacao_atual)
+                    if situacao_atual in SITUACOES_CROQUI
+                    else 0
+                ),
+                key=f"croqui_situacao_{cadastro.id}_{indice}",
             )
 
-            with st.form(
-                f"form_croqui_{indice}"
+            descricao = st.text_area(
+                "Descrição do croqui",
+                value=descricao_atual,
+                placeholder="Ex.: planta do tabuleiro com identificação dos apoios e vãos.",
+                key=f"croqui_desc_{cadastro.id}_{indice}",
+            )
+
+            arquivo = st.file_uploader(
+                "Anexar croqui",
+                key=f"croqui_{cadastro.id}_{indice}",
+                type=["pdf", "png", "jpg", "jpeg"],
+            )
+
+            if existente is not None and existente.nome_arquivo:
+                st.success(f"Arquivo vinculado: {existente.nome_arquivo}")
+
+            if st.button(
+                "💾 Salvar este croqui",
+                type="primary",
+                key=f"croqui_salvar_{cadastro.id}_{indice}",
             ):
-
-                situacao = st.selectbox(
-                    "Situação",
-                    SITUACOES_CROQUI,
-                    index=(
-                        SITUACOES_CROQUI.index(
-                            situacao_atual
-                        )
-                        if situacao_atual
-                        in SITUACOES_CROQUI
-                        else 1
-                    )
-                )
-
-                descricao = st.text_area(
-                    "Descrição",
-                    value=descricao_atual
-                )
-
-                arquivo = st.file_uploader(
-                    "Anexar croqui",
-                    key=f"croqui_{indice}",
-                    type=[
-                        "pdf",
-                        "png",
-                        "jpg",
-                        "jpeg"
-                    ]
-                )
-
-                salvar = st.form_submit_button(
-                    "Salvar croqui"
-                )
-
-            if salvar:
-
                 nome_arquivo = None
                 caminho_arquivo = None
 
                 if arquivo is not None:
-
-                    (
-                        nome_arquivo,
-                        caminho_arquivo
-                    ) = salvar_arquivo(
+                    nome_arquivo, caminho_arquivo = salvar_arquivo(
                         arquivo,
                         PASTA_CROQUIS
                     )
@@ -2908,64 +2998,37 @@ def mostrar_croquis(cadastro):
                 db = SessionLocal()
 
                 registro = (
-                    db.query(
-                        models.CroquiCadastral
-                    )
-                    .filter(
-                        models.CroquiCadastral.inspecao_cadastral_id
-                        == cadastro.id
-                    )
-                    .filter(
-                        models.CroquiCadastral.tipo_croqui
-                        == tipo
-                    )
+                    db.query(models.CroquiCadastral)
+                    .filter(models.CroquiCadastral.inspecao_cadastral_id == cadastro.id)
+                    .filter(models.CroquiCadastral.tipo_croqui == tipo)
                     .first()
                 )
 
                 if registro is None:
-
                     registro = models.CroquiCadastral(
-                        inspecao_cadastral_id=
-                            cadastro.id,
+                        inspecao_cadastral_id=cadastro.id,
                         tipo_croqui=tipo,
                         situacao=situacao,
                         descricao=descricao,
-                        nome_arquivo=
-                            nome_arquivo,
-                        caminho_arquivo=
-                            caminho_arquivo
+                        nome_arquivo=nome_arquivo,
+                        caminho_arquivo=caminho_arquivo,
                     )
-
                     db.add(registro)
-
                 else:
-
                     registro.situacao = situacao
                     registro.descricao = descricao
 
                     if nome_arquivo is not None:
-
-                        registro.nome_arquivo = (
-                            nome_arquivo
-                        )
-
-                        registro.caminho_arquivo = (
-                            caminho_arquivo
-                        )
+                        registro.nome_arquivo = nome_arquivo
+                        registro.caminho_arquivo = caminho_arquivo
 
                 db.commit()
                 db.close()
 
-                st.success(
-                    "Croqui atualizado."
-                )
-
+                st.session_state[f"_croqui_aberto_{cadastro.id}"] = indice
+                st.session_state["_mensagem_cadastral"] = f'Croqui "{tipo}" atualizado com sucesso.'
                 st.rerun()
 
-
-# ============================================================
-# REGISTROS VINCULADOS
-# ============================================================
 
 def mostrar_integracoes(
     oae_ativa,
@@ -2974,6 +3037,12 @@ def mostrar_integracoes(
 
     st.subheader(
         "7️⃣ Anomalias, classificação e fotografias"
+    )
+
+    st.info(
+        "Este quadro é uma verificação de andamento dos registros vinculados "
+        "à inspeção cadastral. Ele serve para mostrar o que já foi registrado "
+        "e o que ainda está pendente; não substitui a análise técnica do inspetor."
     )
 
     anomalias = (
@@ -3004,14 +3073,20 @@ def mostrar_integracoes(
     c1, c2, c3 = st.columns(3)
 
     with c1:
-
         st.metric(
             "Anomalias observadas",
             anomalias
         )
+        if anomalias == 0:
+            st.caption(
+                "Nenhuma anomalia foi registrada até o momento."
+            )
+        else:
+            st.caption(
+                "Há registro(s) de anomalias vinculadas a esta inspeção."
+            )
 
     with c2:
-
         st.metric(
             "Componentes classificados",
             (
@@ -3021,33 +3096,93 @@ def mostrar_integracoes(
             )
         )
 
-    with c3:
+        if (
+            andamento_classificacao["total"] > 0
+            and andamento_classificacao["avaliados"]
+            == andamento_classificacao["total"]
+        ):
+            st.caption(
+                "Todos os componentes cadastrados já foram classificados."
+            )
+        else:
+            faltantes = (
+                andamento_classificacao["total"]
+                - andamento_classificacao["avaliados"]
+            )
+            st.caption(
+                f"Faltam {faltantes} componente(s) para concluir a classificação."
+            )
 
+    with c3:
         st.metric(
             "Fotografias",
             fotos
         )
 
         if fotos >= 8:
-
             st.caption(
-                "Quantidade mínima da ficha cadastral "
-                "atingida."
+                "Meta mínima interna de 8 registros fotográficos atingida."
             )
-
         else:
-
             st.caption(
-                f"Faltam {8 - fotos} fotografia(s) "
-                "para atingir oito registros."
+                f"Faltam {8 - fotos} fotografia(s) para atingir a meta mínima interna."
             )
+
+    st.divider()
+
+    st.markdown("### 📋 Situação dos registros vinculados")
+
+    situacao_classificacao = (
+        "Concluída"
+        if (
+            andamento_classificacao["total"] > 0
+            and andamento_classificacao["avaliados"]
+            == andamento_classificacao["total"]
+        )
+        else "Pendente"
+    )
+
+    situacao_fotos = (
+        "Atendida"
+        if fotos >= 8
+        else "Pendente"
+    )
+
+    resumo_registros = [
+        {
+            "Item": "Anomalias",
+            "Critério de verificação": "Quantidade de anomalias/ocorrências registradas nesta inspeção",
+            "Resultado atual": anomalias,
+            "Leitura": (
+                "Nenhuma anomalia registrada"
+                if anomalias == 0
+                else f"{anomalias} registro(s)"
+            ),
+        },
+        {
+            "Item": "Classificação dos componentes",
+            "Critério de verificação": "Todos os componentes cadastrados devem ser classificados",
+            "Resultado atual": f"{andamento_classificacao['avaliados']}/{andamento_classificacao['total']}",
+            "Leitura": situacao_classificacao,
+        },
+        {
+            "Item": "Levantamento fotográfico",
+            "Critério de verificação": "Meta mínima interna de 8 fotografias",
+            "Resultado atual": fotos,
+            "Leitura": situacao_fotos,
+        },
+    ]
+
+    st.dataframe(
+        resumo_registros,
+        width="stretch",
+        hide_index=True,
+    )
 
     if (
         classificacao["estrutural"] is not None
-        or
-        classificacao["funcional"] is not None
-        or
-        classificacao["durabilidade"] is not None
+        or classificacao["funcional"] is not None
+        or classificacao["durabilidade"] is not None
     ):
 
         st.markdown(
@@ -3057,7 +3192,6 @@ def mostrar_integracoes(
         c1, c2, c3 = st.columns(3)
 
         with c1:
-
             st.metric(
                 "Estrutural",
                 (
@@ -3069,19 +3203,17 @@ def mostrar_integracoes(
             )
 
         with c2:
-
             st.metric(
                 "Funcional",
                 (
                     classificacao["funcional"]
                     if classificacao["funcional"]
                     is not None
-                    else "NA"
+                    else "—"
                 )
             )
 
         with c3:
-
             st.metric(
                 "Durabilidade",
                 (
@@ -3093,9 +3225,9 @@ def mostrar_integracoes(
             )
 
     st.warning(
-        "A quantidade de fotografias, isoladamente, "
-        "não comprova que o levantamento fotográfico "
-        "está completo."
+        "A quantidade de fotografias, isoladamente, não comprova que o levantamento "
+        "fotográfico está completo. Além disso, a meta de 8 fotografias é um critério "
+        "interno do protótipo e não deve ser interpretada, sozinha, como exigência normativa."
     )
 
 
@@ -3386,20 +3518,45 @@ def mostrar_preenchimento_cadastral(
 
     st.divider()
 
-    abas = st.tabs(
-        [
-            "📍 Identificação",
-            "🏗️ Estrutura",
-            "🛣️ Funcional",
-            "🌱 Ambiental",
-            "📂 Documentos",
-            "📐 Croquis",
-            "🔗 Registros vinculados",
-            "✅ Andamento"
-        ]
+    secoes = [
+        "📍 Identificação",
+        "🏗️ Estrutura",
+        "🛣️ Funcional",
+        "🌱 Ambiental",
+        "📂 Documentos",
+        "📐 Croquis",
+        "🔗 Registros vinculados",
+        "✅ Andamento",
+    ]
+
+    chave_secao = (
+        f"cadastral_secao_{cadastro.id}"
     )
 
-    with abas[0]:
+    if (
+        chave_secao
+        not in st.session_state
+    ):
+
+        st.session_state[
+            chave_secao
+        ] = "📍 Identificação"
+
+    st.caption(
+        "Etapa atual da inspeção cadastral"
+    )
+
+    secao_ativa = st.radio(
+        "Navegação da inspeção cadastral",
+        secoes,
+        horizontal=True,
+        key=chave_secao,
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    if secao_ativa == "📍 Identificação":
 
         mostrar_identificacao_localizacao(
             oae_ativa,
@@ -3407,45 +3564,45 @@ def mostrar_preenchimento_cadastral(
             cadastro
         )
 
-    with abas[1]:
+    elif secao_ativa == "🏗️ Estrutura":
 
         mostrar_caracteristicas_estruturais(
             oae_ativa,
             cadastro
         )
 
-    with abas[2]:
+    elif secao_ativa == "🛣️ Funcional":
 
         mostrar_caracteristicas_funcionais(
             cadastro
         )
 
-    with abas[3]:
+    elif secao_ativa == "🌱 Ambiental":
 
         mostrar_caracteristicas_ambientais(
             cadastro
         )
 
-    with abas[4]:
+    elif secao_ativa == "📂 Documentos":
 
         mostrar_documentos(
             cadastro
         )
 
-    with abas[5]:
+    elif secao_ativa == "📐 Croquis":
 
         mostrar_croquis(
             cadastro
         )
 
-    with abas[6]:
+    elif secao_ativa == "🔗 Registros vinculados":
 
         mostrar_integracoes(
             oae_ativa,
             inspecao_ativa
         )
 
-    with abas[7]:
+    elif secao_ativa == "✅ Andamento":
 
         mostrar_status_cadastral(
             oae_ativa,

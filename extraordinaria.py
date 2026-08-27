@@ -446,7 +446,7 @@ def mostrar_evento_escopo(oae_ativa, inspecao_ativa, registro):
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação da definição do escopo",
+        "Conferência da definição do escopo",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(atual),
         key="extra_evento_status",
@@ -548,7 +548,7 @@ def mostrar_descricao_acesso(registro):
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(atual),
         key="extra_desc_status",
@@ -668,7 +668,7 @@ def mostrar_anomalias_mapeamento(oae_ativa, inspecao_ativa, registro):
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação da etapa de anomalias",
+        "Conferência da etapa de anomalias",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(atual),
         key="extra_anom_status",
@@ -729,7 +729,7 @@ def mostrar_fotografias(oae_ativa, inspecao_ativa, registro):
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação da documentação fotográfica",
+        "Conferência da documentação fotográfica",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(atual),
         key="extra_foto_status",
@@ -875,7 +875,7 @@ def mostrar_terapia(inspecao_ativa, registro):
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(atual),
         key="extra_terapia_status",

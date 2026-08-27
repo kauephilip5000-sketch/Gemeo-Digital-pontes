@@ -1500,7 +1500,7 @@ def mostrar_descricao_obra(
         atual = "Não verificado"
 
     situacao = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(
             atual
@@ -3488,7 +3488,7 @@ def mostrar_complementares_especial(
         atual = "Não verificado"
 
     situacao = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(
             atual
@@ -3901,6 +3901,12 @@ def mostrar_preenchimento_especial(
 
     st.divider()
 
+    st.caption(
+        "Os campos de conteúdo são preenchidos diretamente. Os seletores de "
+        "conferência indicam apenas se a etapa foi verificada/concluída e não "
+        "bloqueiam a digitação dos demais campos."
+    )
+
     abas = st.tabs(
         [
             "📍 Localização",
@@ -4040,13 +4046,18 @@ def mostrar_modulo_especial(
             for item in especiais
         ]
 
+        ordenadas = sorted(
+            especiais,
+            key=lambda item: (item.data_inspecao, item.id)
+        )
+
         mapa = {
             item.id:
                 (
-                    f"{item.id} - "
+                    f"{numero} - "
                     f"{item.data_inspecao.strftime('%d/%m/%Y')}"
                 )
-            for item in especiais
+            for numero, item in enumerate(ordenadas, start=1)
         }
 
         id_padrao = ids[0]

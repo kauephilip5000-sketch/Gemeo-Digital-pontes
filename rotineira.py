@@ -280,6 +280,35 @@ def buscar_todas_inspecoes_cronologicas(
     return dados
 
 
+def buscar_ultima_inspecao_antes_da_data(
+    oae_id,
+    data_referencia,
+):
+
+    db = SessionLocal()
+
+    dado = (
+        db.query(models.Inspecao)
+        .filter(
+            models.Inspecao.oae_id
+            == oae_id
+        )
+        .filter(
+            models.Inspecao.data_inspecao
+            < data_referencia
+        )
+        .order_by(
+            models.Inspecao.data_inspecao.desc(),
+            models.Inspecao.id.desc(),
+        )
+        .first()
+    )
+
+    db.close()
+
+    return dado
+
+
 def inspecao_eh_anterior(
     candidata,
     referencia,
@@ -334,38 +363,6 @@ def buscar_inspecao_anterior(
     db.close()
 
     return anterior
-
-
-def buscar_ultima_inspecao_antes_da_data(
-    oae_id,
-    data_referencia,
-):
-
-    if data_referencia is None:
-        return None
-
-    db = SessionLocal()
-
-    anterior = (
-        db.query(models.Inspecao)
-        .filter(
-            models.Inspecao.oae_id == oae_id
-        )
-        .filter(
-            models.Inspecao.data_inspecao
-            < data_referencia
-        )
-        .order_by(
-            models.Inspecao.data_inspecao.desc(),
-            models.Inspecao.id.desc(),
-        )
-        .first()
-    )
-
-    db.close()
-
-    return anterior
-
 
 # ============================================================
 # REGISTRO ESPECIALIZADO
@@ -524,6 +521,7 @@ def buscar_anomalias_anteriores(
     return dados
 
 
+
 def buscar_observacao_anomalia(
     anomalia_id,
     inspecao_id,
@@ -587,7 +585,10 @@ def contar_anomalias_anteriores_verificadas(
         inspecao_atual,
     )
 
-    total = len(anteriores)
+    total = len(
+        anteriores
+    )
+
     verificadas = 0
 
     for anomalia in anteriores:
@@ -598,6 +599,7 @@ def contar_anomalias_anteriores_verificadas(
         )
 
         if observacao is not None:
+
             verificadas += 1
 
     return total, verificadas
@@ -761,7 +763,6 @@ def mostrar_aviso_periodicidade(
             "pelo responsável técnico."
         )
 
-
 # ============================================================
 # NOVA INSPEÇÃO ROTINEIRA
 # ============================================================
@@ -879,6 +880,11 @@ def mostrar_nova_inspecao_rotineira(
     )
 
     db.flush()
+
+    # --------------------------------------------------------
+    # Mantém compatibilidade com a estrutura já existente
+    # do software.
+    # --------------------------------------------------------
 
     detalhe = models.DetalheInspecao(
         inspecao_id=nova.id,
@@ -1385,7 +1391,7 @@ def mostrar_intervencoes(
     )
 
     situacao = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=(
             STATUS_VERIFICACAO.index(
@@ -1570,7 +1576,7 @@ def mostrar_anomalias_anteriores(
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação da verificação das anomalias anteriores",
+        "Conferência das anomalias anteriores",
         opcoes_status,
         index=opcoes_status.index(
             atual
@@ -1729,7 +1735,7 @@ def mostrar_novas_ocorrencias(
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação da verificação de novas ocorrências",
+        "Conferência de novas ocorrências",
         opcoes,
         index=opcoes.index(
             atual
@@ -2123,7 +2129,7 @@ def mostrar_alteracoes_recomendacoes(
         atual = "Não verificado"
 
     status = st.selectbox(
-        "Situação desta etapa",
+        "Conferência da etapa",
         STATUS_VERIFICACAO,
         index=STATUS_VERIFICACAO.index(
             atual
@@ -2165,6 +2171,11 @@ def mostrar_alteracoes_recomendacoes(
         dado.informacoes_complementares_verificadas = (
             status
         )
+
+        # ----------------------------------------------------
+        # Atualiza também o campo antigo para manter
+        # compatibilidade com o restante do app.
+        # ----------------------------------------------------
 
         detalhe = (
             db.query(models.DetalheInspecao)
@@ -2234,6 +2245,10 @@ def mostrar_andamento_rotineira(
         )
     )
 
+    # --------------------------------------------------------
+    # INFORMAÇÕES GERAIS
+    # --------------------------------------------------------
+
     info_ok = (
         registro.informacoes_localizacao_verificadas
         == "Verificado"
@@ -2241,6 +2256,12 @@ def mostrar_andamento_rotineira(
         registro.sistema_estrutural_verificado
         == "Verificado"
     )
+
+    # --------------------------------------------------------
+    # INSPEÇÃO VISUAL
+    # Não verificado não conclui.
+    # "Não se aplica" é aceito quando tecnicamente cabível.
+    # --------------------------------------------------------
 
     visual_status = [
         registro.tabuleiro_verificado,
@@ -2257,6 +2278,10 @@ def mostrar_andamento_rotineira(
         for item in visual_status
     )
 
+    # --------------------------------------------------------
+    # INTERVENÇÕES
+    # --------------------------------------------------------
+
     intervencoes_ok = (
         registro.intervencoes_verificadas
         in [
@@ -2264,6 +2289,10 @@ def mostrar_andamento_rotineira(
             "Não se aplica",
         ]
     )
+
+    # --------------------------------------------------------
+    # ANOMALIAS ANTERIORES
+    # --------------------------------------------------------
 
     if total_anteriores == 0:
 
@@ -2286,6 +2315,10 @@ def mostrar_andamento_rotineira(
             == "Verificadas"
         )
 
+    # --------------------------------------------------------
+    # NOVAS OCORRÊNCIAS
+    # --------------------------------------------------------
+
     if quantidade_novas == 0:
 
         novas_ok = (
@@ -2302,6 +2335,10 @@ def mostrar_andamento_rotineira(
             "Verificado - novas ocorrências registradas"
         )
 
+    # --------------------------------------------------------
+    # FOTOS
+    # --------------------------------------------------------
+
     minimo_fotos_ok = (
         fotos >= 8
     )
@@ -2312,9 +2349,17 @@ def mostrar_andamento_rotineira(
         "Abrangência verificada pelo inspetor"
     )
 
+    # --------------------------------------------------------
+    # CLASSIFICAÇÃO
+    # --------------------------------------------------------
+
     classificacao_ok = (
         andamento_classificacao["concluida"]
     )
+
+    # --------------------------------------------------------
+    # COMPLEMENTARES
+    # --------------------------------------------------------
 
     complementares_ok = (
         registro
@@ -2547,6 +2592,12 @@ def mostrar_preenchimento_rotineira(
 
     st.divider()
 
+    st.caption(
+        "Os campos de conteúdo são preenchidos diretamente. Os seletores de "
+        "conferência indicam apenas se a etapa foi verificada/concluída e não "
+        "bloqueiam a digitação dos demais campos."
+    )
+
     abas = st.tabs(
         [
             "📍 Informações gerais",
@@ -2689,13 +2740,18 @@ def mostrar_modulo_rotineira(
             for item in rotineiras
         ]
 
+        ordenadas = sorted(
+            rotineiras,
+            key=lambda item: (item.data_inspecao, item.id)
+        )
+
         mapa = {
             item.id:
                 (
-                    f"{item.id} - "
+                    f"{numero} - "
                     f"{item.data_inspecao.strftime('%d/%m/%Y')}"
                 )
-            for item in rotineiras
+            for numero, item in enumerate(ordenadas, start=1)
         }
 
         id_padrao = ids[0]

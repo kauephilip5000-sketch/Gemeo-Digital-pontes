@@ -4,6 +4,216 @@ from database import SessionLocal
 import models
 
 
+# ============================================================
+# NUMERAÇÃO VISUAL
+# ============================================================
+
+ORDEM_CATEGORIAS_COMPONENTES = {
+    "Superestrutura": 1,
+    "Mesoestrutura": 2,
+    "Infraestrutura": 3,
+    "Encontros": 4,
+    "Elementos complementares": 5,
+    "Pista / via permanente": 6,
+}
+
+
+def _chave_natural(texto):
+
+    import re
+
+    partes = re.split(
+        r"(\d+)",
+        (texto or "").lower()
+    )
+
+    return [
+        int(parte)
+        if parte.isdigit()
+        else parte
+        for parte in partes
+    ]
+
+
+def _buscar_componentes_ordenados(oae_id):
+
+    db = SessionLocal()
+
+    componentes = (
+        db.query(models.Componente)
+        .filter(
+            models.Componente.oae_id
+            == oae_id
+        )
+        .all()
+    )
+
+    db.close()
+
+    return sorted(
+        componentes,
+        key=lambda item: (
+            ORDEM_CATEGORIAS_COMPONENTES.get(
+                getattr(
+                    item,
+                    "categoria",
+                    None
+                ),
+                999
+            ),
+            _chave_natural(
+                getattr(
+                    item,
+                    "nome",
+                    ""
+                )
+            ),
+            item.id,
+        )
+    )
+
+
+def numero_visual_componente(
+    oae_id,
+    componente_id,
+):
+
+    componentes = _buscar_componentes_ordenados(
+        oae_id
+    )
+
+    for numero, componente in enumerate(
+        componentes,
+        start=1
+    ):
+
+        if componente.id == componente_id:
+            return numero
+
+    return "—"
+
+
+def numero_visual_inspecao(
+    oae_id,
+    inspecao_id,
+):
+
+    db = SessionLocal()
+
+    inspecoes = (
+        db.query(models.Inspecao)
+        .filter(
+            models.Inspecao.oae_id
+            == oae_id
+        )
+        .order_by(
+            models.Inspecao.data_inspecao.asc(),
+            models.Inspecao.id.asc(),
+        )
+        .all()
+    )
+
+    db.close()
+
+    for numero, inspecao in enumerate(
+        inspecoes,
+        start=1
+    ):
+
+        if inspecao.id == inspecao_id:
+            return numero
+
+    return "—"
+
+
+def numero_visual_anomalia(
+    oae_id,
+    anomalia_id,
+):
+
+    db = SessionLocal()
+
+    anomalias = (
+        db.query(models.AnomaliaPermanente)
+        .filter(
+            models.AnomaliaPermanente.oae_id
+            == oae_id
+        )
+        .order_by(
+            models.AnomaliaPermanente.id.asc()
+        )
+        .all()
+    )
+
+    db.close()
+
+    for numero, item in enumerate(
+        anomalias,
+        start=1
+    ):
+
+        if item.id == anomalia_id:
+            return numero
+
+    return "—"
+
+
+def codigo_visual_anomalia(
+    oae_id,
+    anomalia_id,
+):
+
+    numero = numero_visual_anomalia(
+        oae_id,
+        anomalia_id,
+    )
+
+    if isinstance(numero, int):
+        return f"A{numero:02d}"
+
+    return "A—"
+
+
+def numero_visual_fotografia(
+    oae_id,
+    inspecao_id,
+    fotografia_id,
+):
+
+    db = SessionLocal()
+
+    fotografias = (
+        db.query(models.Fotografia)
+        .filter(
+            models.Fotografia.oae_id
+            == oae_id
+        )
+        .filter(
+            models.Fotografia.inspecao_id
+            == inspecao_id
+        )
+        .order_by(
+            models.Fotografia.data_foto.asc(),
+            models.Fotografia.id.asc(),
+        )
+        .all()
+    )
+
+    db.close()
+
+    for numero, item in enumerate(
+        fotografias,
+        start=1
+    ):
+
+        if item.id == fotografia_id:
+            return numero
+
+    return "—"
+
+
+
+
 def mostrar_modulo_anomalias(
     oae_ativa,
     inspecao_ativa,
@@ -37,21 +247,30 @@ def mostrar_modulo_anomalias(
     # CONTEXTO ATUAL
     # ========================================================
 
+    numero_inspecao = numero_visual_inspecao(
+        oae_ativa.id,
+        inspecao_ativa.id,
+    )
+
+    numero_componente = numero_visual_componente(
+        oae_ativa.id,
+        componente_ativo.id,
+    )
+
     st.write(
-        f"**OAE:** "
-        f"{oae_ativa.id} - {oae_ativa.nome}"
+        f"**OAE:** {oae_ativa.nome}"
     )
 
     st.write(
         f"**Inspeção:** "
-        f"{inspecao_ativa.id} - "
+        f"{numero_inspecao} - "
         f"{inspecao_ativa.tipo_inspecao} - "
         f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
     )
 
     st.write(
         f"**Componente:** "
-        f"{componente_ativo.id} - "
+        f"{numero_componente} - "
         f"{componente_ativo.nome}"
     )
 
@@ -252,9 +471,14 @@ def mostrar_modulo_anomalias(
 
                 db.close()
 
+                codigo_anomalia = codigo_visual_anomalia(
+                    oae_ativa.id,
+                    anomalia_id,
+                )
+
                 st.success(
-                    f"Nova anomalia cadastrada com sucesso. "
-                    f"ID permanente: {anomalia_id}"
+                    f"Nova anomalia cadastrada com sucesso: "
+                    f"{codigo_anomalia}."
                 )
 
 
@@ -282,7 +506,7 @@ def mostrar_modulo_anomalias(
             for anomalia in anomalias_existentes:
 
                 texto = (
-                    f"ID {anomalia.id} - "
+                    f"{codigo_visual_anomalia(oae_ativa.id, anomalia.id)} - "
                     f"{anomalia.tipo_anomalia} - "
                     f"{anomalia.localizacao_referencia}"
                 )
@@ -316,9 +540,14 @@ def mostrar_modulo_anomalias(
                 f"{anomalia_escolhida.localizacao_referencia}"
             )
 
+            numero_origem = numero_visual_inspecao(
+                oae_ativa.id,
+                anomalia_escolhida.inspecao_origem_id,
+            )
+
             st.write(
                 f"**Inspeção de origem:** "
-                f"ID {anomalia_escolhida.inspecao_origem_id}"
+                f"{numero_origem}"
             )
 
 
@@ -495,7 +724,7 @@ def mostrar_modulo_anomalias(
         for anomalia in anomalias_listagem:
 
             titulo = (
-                f"ID {anomalia.id} - "
+                f"{codigo_visual_anomalia(oae_ativa.id, anomalia.id)} - "
                 f"{anomalia.tipo_anomalia} - "
                 f"{anomalia.localizacao_referencia}"
             )
@@ -504,9 +733,14 @@ def mostrar_modulo_anomalias(
                 titulo
             ):
 
+                numero_origem = numero_visual_inspecao(
+                    oae_ativa.id,
+                    anomalia.inspecao_origem_id,
+                )
+
                 st.write(
                     f"**Inspeção de origem:** "
-                    f"ID {anomalia.inspecao_origem_id}"
+                    f"{numero_origem}"
                 )
 
                 st.write(
@@ -567,7 +801,10 @@ def mostrar_modulo_anomalias(
                     dados_observacoes.append(
                         {
                             "Inspeção":
-                                observacao.inspecao_id,
+                                numero_visual_inspecao(
+                                    oae_ativa.id,
+                                    observacao.inspecao_id,
+                                ),
                             "Data":
                                 data_inspecao,
                             "Abertura (mm)":
