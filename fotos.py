@@ -407,13 +407,6 @@ def mostrar_modulo_fotografias(
         return
 
 
-    if componente_ativo is None:
-
-        st.warning(
-            "Selecione um componente antes de registrar fotografias."
-        )
-
-        return
 
 
     # ========================================================
@@ -423,11 +416,6 @@ def mostrar_modulo_fotografias(
     numero_inspecao = numero_visual_inspecao(
         oae_ativa.id,
         inspecao_ativa.id,
-    )
-
-    numero_componente = numero_visual_componente(
-        oae_ativa.id,
-        componente_ativo.id,
     )
 
     st.write(
@@ -441,11 +429,24 @@ def mostrar_modulo_fotografias(
         f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
     )
 
-    st.write(
-        f"**Componente:** "
-        f"{numero_componente} - "
-        f"{componente_ativo.nome}"
-    )
+    if componente_ativo is not None:
+
+        numero_componente = numero_visual_componente(
+            oae_ativa.id,
+            componente_ativo.id,
+        )
+
+        st.write(
+            f"**Componente ativo:** "
+            f"{numero_componente} - "
+            f"{componente_ativo.nome}"
+        )
+
+    else:
+
+        st.write(
+            "**Componente ativo:** nenhum componente selecionado"
+        )
 
     st.divider()
 
@@ -454,13 +455,19 @@ def mostrar_modulo_fotografias(
     # OBSERVAÇÕES DE ANOMALIAS DISPONÍVEIS
     # ========================================================
 
-    observacoes_disponiveis = (
-        buscar_observacoes_anomalias(
-            oae_id=oae_ativa.id,
-            inspecao_id=inspecao_ativa.id,
-            componente_id=componente_ativo.id
+    if componente_ativo is not None:
+
+        observacoes_disponiveis = (
+            buscar_observacoes_anomalias(
+                oae_id=oae_ativa.id,
+                inspecao_id=inspecao_ativa.id,
+                componente_id=componente_ativo.id
+            )
         )
-    )
+
+    else:
+
+        observacoes_disponiveis = []
 
 
     # ========================================================
@@ -471,14 +478,45 @@ def mostrar_modulo_fotografias(
         "➕ Adicionar fotografia"
     )
 
-    tipo_vinculo = st.radio(
+    escopo_fotografia = st.radio(
         "O que esta fotografia registra?",
         [
-            "Registro geral do componente",
+            "Vista geral da OAE",
+            "Componente específico",
             "Anomalia observada nesta inspeção"
         ],
-        horizontal=True
+        horizontal=True,
+        key="escopo_fotografia"
     )
+
+    if escopo_fotografia == "Vista geral da OAE":
+
+        st.info(
+            "Esta fotografia será vinculada à OAE e à inspeção, "
+            "sem componente específico."
+        )
+
+    elif escopo_fotografia == "Componente específico":
+
+        if componente_ativo is None:
+
+            st.warning(
+                "Selecione um componente ativo para registrar "
+                "uma fotografia de componente."
+            )
+
+        else:
+
+            st.info(
+                f"Esta fotografia será vinculada ao componente "
+                f"{componente_ativo.nome}."
+            )
+
+    elif componente_ativo is None:
+
+        st.warning(
+            "Selecione o componente da anomalia antes de continuar."
+        )
 
 
     # ========================================================
@@ -488,7 +526,7 @@ def mostrar_modulo_fotografias(
     item_anomalia_selecionado = None
 
     if (
-        tipo_vinculo
+        escopo_fotografia
         == "Anomalia observada nesta inspeção"
     ):
 
@@ -595,10 +633,23 @@ def mostrar_modulo_fotografias(
     pode_salvar = True
 
     if (
-        tipo_vinculo
+        escopo_fotografia
+        == "Componente específico"
+        and
+        componente_ativo is None
+    ):
+
+        pode_salvar = False
+
+    if (
+        escopo_fotografia
         == "Anomalia observada nesta inspeção"
         and
-        item_anomalia_selecionado is None
+        (
+            componente_ativo is None
+            or
+            item_anomalia_selecionado is None
+        )
     ):
 
         pode_salvar = False
@@ -624,25 +675,32 @@ def mostrar_modulo_fotografias(
             format="DD/MM/YYYY"
         )
 
+        opcoes_tipo_registro = [
+            "Vista geral",
+            "Vista superior",
+            "Vista lateral",
+            "Vista inferior",
+            "Elemento estrutural",
+            "Anomalia",
+            "Outro"
+        ]
+
+        if escopo_fotografia == "Vista geral da OAE":
+
+            indice_tipo_registro = 0
+
+        elif escopo_fotografia == "Anomalia observada nesta inspeção":
+
+            indice_tipo_registro = 5
+
+        else:
+
+            indice_tipo_registro = 4
+
         tipo_registro = st.selectbox(
             "Tipo de registro",
-            [
-                "Vista geral",
-                "Vista superior",
-                "Vista lateral",
-                "Vista inferior",
-                "Elemento estrutural",
-                "Anomalia",
-                "Outro"
-            ],
-            index=(
-                5
-                if (
-                    tipo_vinculo
-                    == "Anomalia observada nesta inspeção"
-                )
-                else 4
-            )
+            opcoes_tipo_registro,
+            index=indice_tipo_registro
         )
 
         identificacao = st.text_input(
@@ -727,7 +785,11 @@ def mostrar_modulo_fotografias(
             nova_foto = models.Fotografia(
                 oae_id=oae_ativa.id,
                 inspecao_id=inspecao_ativa.id,
-                componente_id=componente_ativo.id,
+                componente_id=(
+                    None
+                    if escopo_fotografia == "Vista geral da OAE"
+                    else componente_ativo.id
+                ),
 
                 # O modelo antigo não será mais utilizado
                 # para novas fotografias.
@@ -759,7 +821,7 @@ def mostrar_modulo_fotografias(
             # ------------------------------------------------
 
             if (
-                tipo_vinculo
+                escopo_fotografia
                 == "Anomalia observada nesta inspeção"
                 and
                 item_anomalia_selecionado
@@ -821,7 +883,7 @@ def mostrar_modulo_fotografias(
             )
 
             if (
-                tipo_vinculo
+                escopo_fotografia
                 == "Anomalia observada nesta inspeção"
             ):
 
@@ -1020,7 +1082,11 @@ def mostrar_modulo_fotografias(
 
                 st.write(
                     "**Componente:**",
-                    componente_nome
+                    (
+                        componente_nome
+                        if foto.componente_id is not None
+                        else "Sem componente específico — vista geral da OAE"
+                    )
                 )
 
                 st.write(
@@ -1129,6 +1195,91 @@ def mostrar_modulo_fotografias(
                                 f"{observacao.extensao_anomalia_cm:.1f} cm"
                             )
                         )
+
+
+            # ------------------------------------------------
+            # EXCLUSÃO SEGURA
+            # ------------------------------------------------
+
+            st.divider()
+
+            st.markdown(
+                "#### 🗑️ Excluir fotografia"
+            )
+
+            st.caption(
+                "Use esta opção quando a fotografia tiver sido "
+                "cadastrada por engano. O registro, o vínculo com "
+                "anomalia e o arquivo local serão removidos."
+            )
+
+            confirmar_exclusao_foto = st.checkbox(
+                "Confirmo que desejo excluir esta fotografia",
+                key=f"confirmar_exclusao_foto_{foto.id}"
+            )
+
+            if st.button(
+                "🗑️ Excluir definitivamente esta fotografia",
+                key=f"excluir_foto_{foto.id}",
+                disabled=not confirmar_exclusao_foto,
+            ):
+
+                caminho_para_excluir = Path(
+                    foto.caminho_arquivo
+                )
+
+                db_exclusao = SessionLocal()
+
+                try:
+
+                    db_exclusao.query(
+                        models.VinculoFotografiaAnomalia
+                    ).filter(
+                        models.VinculoFotografiaAnomalia.fotografia_id
+                        == foto.id
+                    ).delete(
+                        synchronize_session=False
+                    )
+
+                    db_exclusao.query(
+                        models.Fotografia
+                    ).filter(
+                        models.Fotografia.id
+                        == foto.id
+                    ).delete(
+                        synchronize_session=False
+                    )
+
+                    db_exclusao.commit()
+
+                except Exception as erro:
+
+                    db_exclusao.rollback()
+                    db_exclusao.close()
+
+                    st.error(
+                        "Não foi possível excluir a fotografia. "
+                        f"Detalhe: {erro}"
+                    )
+
+                    st.stop()
+
+                db_exclusao.close()
+
+                try:
+
+                    if caminho_para_excluir.exists():
+                        caminho_para_excluir.unlink()
+
+                except Exception:
+
+                    pass
+
+                st.success(
+                    "Fotografia excluída com sucesso."
+                )
+
+                st.rerun()
 
 
             # ------------------------------------------------

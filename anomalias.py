@@ -1115,7 +1115,7 @@ def mostrar_modulo_anomalias(
                         "Descreva o estado atual da anomalia "
                         "e eventuais alterações observadas."
                     ),
-                    key="obs_existente_descricao"
+                    key=f"obs_existente_descricao_{anomalia_escolhida.id}"
                 )
 
                 localizacao_detalhada = st.text_input(
@@ -1124,7 +1124,7 @@ def mostrar_modulo_anomalias(
                         anomalia_escolhida
                         .localizacao_referencia
                     ),
-                    key="obs_existente_localizacao"
+                    key=f"obs_existente_localizacao_{anomalia_escolhida.id}"
                 )
 
                 abertura_fissura_mm = 0.0
@@ -1141,7 +1141,7 @@ def mostrar_modulo_anomalias(
                             min_value=0.0,
                             step=0.01,
                             format="%.2f",
-                            key="obs_existente_abertura"
+                            key=f"obs_existente_abertura_{anomalia_escolhida.id}"
                         )
                     )
 
@@ -1150,7 +1150,7 @@ def mostrar_modulo_anomalias(
                     min_value=0.0,
                     step=0.1,
                     format="%.1f",
-                    key="obs_existente_extensao"
+                    key=f"obs_existente_extensao_{anomalia_escolhida.id}"
                 )
 
                 situacao_observada = st.selectbox(
@@ -1162,18 +1162,18 @@ def mostrar_modulo_anomalias(
                         "Reparada",
                         "Não determinada"
                     ],
-                    key="obs_existente_situacao"
+                    key=f"obs_existente_situacao_{anomalia_escolhida.id}"
                 )
 
                 observacoes = st.text_area(
                     "Observações",
-                    key="obs_existente_observacoes"
+                    key=f"obs_existente_observacoes_{anomalia_escolhida.id}"
                 )
 
                 salvar_observacao = st.button(
                     "💾 Salvar observação",
                     type="primary",
-                    key="salvar_observacao_existente"
+                    key=f"salvar_observacao_existente_{anomalia_escolhida.id}"
                 )
 
                 if salvar_observacao:
