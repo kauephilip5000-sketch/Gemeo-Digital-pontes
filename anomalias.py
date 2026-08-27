@@ -303,6 +303,363 @@ def rotulo_extensao_anomalia(
 
 
 
+
+def buscar_anomalias_oae(
+    oae_id,
+):
+
+    db = SessionLocal()
+
+    dados = (
+        db.query(models.AnomaliaPermanente)
+        .filter(
+            models.AnomaliaPermanente.oae_id
+            == oae_id
+        )
+        .order_by(
+            models.AnomaliaPermanente.id.asc()
+        )
+        .all()
+    )
+
+    db.close()
+
+    return dados
+
+
+def buscar_componente_por_id(
+    componente_id,
+):
+
+    if componente_id is None:
+        return None
+
+    db = SessionLocal()
+
+    componente = (
+        db.query(models.Componente)
+        .filter(
+            models.Componente.id
+            == componente_id
+        )
+        .first()
+    )
+
+    db.close()
+
+    return componente
+
+
+def buscar_inspecao_por_id(
+    inspecao_id,
+):
+
+    if inspecao_id is None:
+        return None
+
+    db = SessionLocal()
+
+    inspecao = (
+        db.query(models.Inspecao)
+        .filter(
+            models.Inspecao.id
+            == inspecao_id
+        )
+        .first()
+    )
+
+    db.close()
+
+    return inspecao
+
+
+def mostrar_visao_geral_anomalias_oae(
+    oae_ativa,
+    componente_ativo=None,
+):
+
+    st.divider()
+
+    st.subheader(
+        "🌉 Visão geral das anomalias da OAE"
+    )
+
+    st.caption(
+        "Esta visão reúne todas as anomalias cadastradas na ponte, "
+        "independentemente do componente ativo."
+    )
+
+    anomalias = buscar_anomalias_oae(
+        oae_ativa.id
+    )
+
+    if len(anomalias) == 0:
+
+        st.info(
+            "Nenhuma anomalia foi cadastrada para esta OAE."
+        )
+
+        return
+
+    registros = []
+
+    componentes_encontrados = set()
+    tipos_encontrados = set()
+    situacoes_encontradas = set()
+
+    for anomalia in anomalias:
+
+        componente = buscar_componente_por_id(
+            anomalia.componente_id
+        )
+
+        inspecao_origem = buscar_inspecao_por_id(
+            anomalia.inspecao_origem_id
+        )
+
+        componente_nome = (
+            componente.nome
+            if componente is not None
+            else "Componente não localizado"
+        )
+
+        numero_componente = numero_visual_componente(
+            oae_ativa.id,
+            anomalia.componente_id,
+        )
+
+        componente_visual = (
+            f"{numero_componente} - {componente_nome}"
+        )
+
+        codigo = codigo_visual_anomalia(
+            oae_ativa.id,
+            anomalia.id,
+        )
+
+        if inspecao_origem is not None:
+
+            numero_inspecao = numero_visual_inspecao(
+                oae_ativa.id,
+                inspecao_origem.id,
+            )
+
+            origem_visual = (
+                f"{numero_inspecao} - "
+                f"{inspecao_origem.tipo_inspecao} - "
+                f"{inspecao_origem.data_inspecao.strftime('%d/%m/%Y')}"
+            )
+
+        else:
+
+            origem_visual = "Não localizada"
+
+        situacao = (
+            "Ativa"
+            if getattr(
+                anomalia,
+                "ativa",
+                1
+            )
+            else "Inativa"
+        )
+
+        registros.append(
+            {
+                "_componente_id": anomalia.componente_id,
+                "Código": codigo,
+                "Componente": componente_visual,
+                "Tipo": anomalia.tipo_anomalia or "Não informado",
+                "Localização": (
+                    anomalia.localizacao_referencia
+                    or "Não informada"
+                ),
+                "Inspeção de origem": origem_visual,
+                "Situação": situacao,
+            }
+        )
+
+        componentes_encontrados.add(
+            componente_visual
+        )
+
+        tipos_encontrados.add(
+            anomalia.tipo_anomalia
+            or "Não informado"
+        )
+
+        situacoes_encontradas.add(
+            situacao
+        )
+
+    total = len(
+        registros
+    )
+
+    total_ativas = sum(
+        1
+        for item in registros
+        if item["Situação"] == "Ativa"
+    )
+
+    total_inativas = total - total_ativas
+
+    componentes_afetados = len(
+        {
+            item["_componente_id"]
+            for item in registros
+        }
+    )
+
+    c1, c2, c3, c4 = st.columns(
+        4
+    )
+
+    with c1:
+        st.metric(
+            "Total de anomalias",
+            total
+        )
+
+    with c2:
+        st.metric(
+            "Ativas",
+            total_ativas
+        )
+
+    with c3:
+        st.metric(
+            "Inativas",
+            total_inativas
+        )
+
+    with c4:
+        st.metric(
+            "Componentes afetados",
+            componentes_afetados
+        )
+
+    st.markdown(
+        "#### 🔎 Filtros"
+    )
+
+    c1, c2, c3 = st.columns(
+        3
+    )
+
+    with c1:
+
+        filtro_componente = st.selectbox(
+            "Componente",
+            [
+                "Todos"
+            ]
+            + sorted(
+                componentes_encontrados,
+                key=_chave_natural
+            ),
+            key=(
+                f"filtro_anomalias_oae_componente_"
+                f"{oae_ativa.id}"
+            )
+        )
+
+    with c2:
+
+        filtro_tipo = st.selectbox(
+            "Tipo de anomalia",
+            [
+                "Todos"
+            ]
+            + sorted(
+                tipos_encontrados,
+                key=_chave_natural
+            ),
+            key=(
+                f"filtro_anomalias_oae_tipo_"
+                f"{oae_ativa.id}"
+            )
+        )
+
+    with c3:
+
+        filtro_situacao = st.selectbox(
+            "Situação",
+            [
+                "Todas"
+            ]
+            + sorted(
+                situacoes_encontradas
+            ),
+            key=(
+                f"filtro_anomalias_oae_situacao_"
+                f"{oae_ativa.id}"
+            )
+        )
+
+    filtrados = []
+
+    for item in registros:
+
+        if (
+            filtro_componente != "Todos"
+            and
+            item["Componente"]
+            != filtro_componente
+        ):
+            continue
+
+        if (
+            filtro_tipo != "Todos"
+            and
+            item["Tipo"]
+            != filtro_tipo
+        ):
+            continue
+
+        if (
+            filtro_situacao != "Todas"
+            and
+            item["Situação"]
+            != filtro_situacao
+        ):
+            continue
+
+        filtrados.append(
+            item
+        )
+
+    if componente_ativo is not None:
+
+        st.caption(
+            "O componente ativo continua sendo usado no cadastro "
+            "e na listagem específica acima. Esta tabela mostra a OAE inteira."
+        )
+
+    tabela = [
+        {
+            "Código": item["Código"],
+            "Componente": item["Componente"],
+            "Tipo": item["Tipo"],
+            "Localização": item["Localização"],
+            "Inspeção de origem": item["Inspeção de origem"],
+            "Situação": item["Situação"],
+        }
+        for item in filtrados
+    ]
+
+    st.dataframe(
+        tabela,
+        width="stretch",
+        hide_index=True
+    )
+
+    st.caption(
+        f"Exibindo {len(tabela)} de {total} anomalia(s) cadastrada(s) na OAE."
+    )
+
+
+
 def mostrar_modulo_anomalias(
     oae_ativa,
     inspecao_ativa,
@@ -875,7 +1232,12 @@ def mostrar_modulo_anomalias(
     st.divider()
 
     st.subheader(
-        "Anomalias acompanhadas neste componente"
+        "🧩 Anomalias acompanhadas neste componente"
+    )
+
+    st.caption(
+        "Esta seção mostra somente as anomalias vinculadas "
+        "ao componente atualmente selecionado."
     )
 
     db = SessionLocal()
@@ -1129,3 +1491,9 @@ def mostrar_modulo_anomalias(
                         dados_observacoes,
                         width="stretch"
                     )
+
+    mostrar_visao_geral_anomalias_oae(
+        oae_ativa=oae_ativa,
+        componente_ativo=componente_ativo,
+    )
+
