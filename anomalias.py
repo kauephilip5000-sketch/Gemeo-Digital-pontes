@@ -214,6 +214,95 @@ def numero_visual_fotografia(
 
 
 
+
+# ============================================================
+# CATÁLOGO DE ANOMALIAS
+# ============================================================
+
+TIPOS_ANOMALIA = [
+    "Fissura / trinca",
+    "Desplacamento / destacamento do concreto",
+    "Armadura exposta",
+    "Corrosão de armadura",
+    "Infiltração / umidade",
+    "Eflorescência",
+    "Deformação",
+    "Deterioração de aparelho de apoio",
+    "Deterioração de junta de dilatação",
+    "Obstrução / deficiência de drenagem",
+    "Desgaste / deterioração do pavimento",
+    "Erosão / solapamento",
+    "Dano por impacto",
+    "Outra anomalia",
+]
+
+
+def normalizar_tipo_anomalia(
+    tipo_selecionado,
+    outro_tipo,
+):
+
+    if tipo_selecionado == "Outra anomalia":
+
+        return (
+            outro_tipo.strip()
+            if outro_tipo
+            and outro_tipo.strip()
+            else "Outra anomalia"
+        )
+
+    return tipo_selecionado
+
+
+def tipo_exige_abertura_fissura(
+    tipo_selecionado,
+):
+
+    return (
+        tipo_selecionado
+        == "Fissura / trinca"
+    )
+
+
+def tipo_exige_extensao(
+    tipo_selecionado,
+):
+
+    return tipo_selecionado in [
+        "Fissura / trinca",
+        "Desplacamento / destacamento do concreto",
+        "Armadura exposta",
+        "Corrosão de armadura",
+        "Infiltração / umidade",
+        "Eflorescência",
+        "Deformação",
+        "Deterioração de aparelho de apoio",
+        "Deterioração de junta de dilatação",
+        "Obstrução / deficiência de drenagem",
+        "Desgaste / deterioração do pavimento",
+        "Erosão / solapamento",
+        "Dano por impacto",
+        "Outra anomalia",
+    ]
+
+
+def rotulo_extensao_anomalia(
+    tipo_selecionado,
+):
+
+    if tipo_selecionado == "Dano por impacto":
+        return "Dimensão principal da área afetada (cm)"
+
+    if tipo_selecionado == "Erosão / solapamento":
+        return "Extensão aproximada da região afetada (cm)"
+
+    if tipo_selecionado == "Obstrução / deficiência de drenagem":
+        return "Extensão aproximada do trecho afetado (cm)"
+
+    return "Extensão da anomalia (cm)"
+
+
+
 def mostrar_modulo_anomalias(
     oae_ativa,
     inspecao_ativa,
@@ -327,75 +416,138 @@ def mostrar_modulo_anomalias(
             "Cadastrar nova anomalia"
         )
 
-        with st.form(
-            "form_nova_anomalia"
+        st.caption(
+            "Selecione uma categoria padronizada. "
+            "Os campos de medição exibidos abaixo mudam "
+            "conforme o tipo escolhido."
+        )
+
+        tipo_anomalia_selecionado = st.selectbox(
+            "Tipo de anomalia",
+            TIPOS_ANOMALIA,
+            key="nova_anomalia_tipo"
+        )
+
+        outro_tipo_anomalia = ""
+
+        if (
+            tipo_anomalia_selecionado
+            == "Outra anomalia"
         ):
 
-            tipo_anomalia = st.text_input(
-                "Tipo de anomalia"
-            )
-
-            localizacao_referencia = st.text_input(
-                "Localização de referência",
+            outro_tipo_anomalia = st.text_input(
+                "Especifique o tipo de anomalia",
                 placeholder=(
-                    "Ex.: face inferior da Longarina 1, "
-                    "região central do vão"
-                )
+                    "Ex.: falha localizada de revestimento"
+                ),
+                key="nova_anomalia_outro_tipo"
             )
 
-            descricao_inicial = st.text_area(
-                "Descrição inicial da anomalia"
-            )
+        localizacao_referencia = st.text_input(
+            "Localização de referência",
+            placeholder=(
+                "Ex.: face inferior da Longarina L2, "
+                "região central do vão"
+            ),
+            key="nova_anomalia_localizacao"
+        )
+
+        descricao_inicial = st.text_area(
+            "Descrição inicial da anomalia",
+            placeholder=(
+                "Descreva a manifestação observada, "
+                "aspecto, posição e características relevantes."
+            ),
+            key="nova_anomalia_descricao"
+        )
+
+        abertura_fissura_mm = 0.0
+
+        if tipo_exige_abertura_fissura(
+            tipo_anomalia_selecionado
+        ):
 
             abertura_fissura_mm = st.number_input(
                 "Abertura da fissura (mm)",
                 min_value=0.0,
                 step=0.01,
-                format="%.2f"
+                format="%.2f",
+                key="nova_anomalia_abertura"
             )
+
+        extensao_anomalia_cm = 0.0
+
+        if tipo_exige_extensao(
+            tipo_anomalia_selecionado
+        ):
 
             extensao_anomalia_cm = st.number_input(
-                "Extensão da anomalia (cm)",
+                rotulo_extensao_anomalia(
+                    tipo_anomalia_selecionado
+                ),
                 min_value=0.0,
                 step=0.1,
-                format="%.1f"
+                format="%.1f",
+                key="nova_anomalia_extensao"
             )
 
-            situacao_observada = st.selectbox(
-                "Situação observada",
-                [
-                    "Identificada nesta inspeção",
-                    "Estável",
-                    "Evolução observada",
-                    "Redução aparente",
-                    "Reparada",
-                    "Não determinada"
-                ]
-            )
+        situacao_observada = st.selectbox(
+            "Situação observada",
+            [
+                "Identificada nesta inspeção",
+                "Estável",
+                "Evolução observada",
+                "Redução aparente",
+                "Reparada",
+                "Não determinada"
+            ],
+            key="nova_anomalia_situacao"
+        )
 
-            observacoes = st.text_area(
-                "Observações"
-            )
+        observacoes = st.text_area(
+            "Observações",
+            placeholder=(
+                "Registre informações complementares "
+                "relevantes para o acompanhamento."
+            ),
+            key="nova_anomalia_observacoes"
+        )
 
-            salvar_nova_anomalia = (
-                st.form_submit_button(
-                    "Salvar nova anomalia"
-                )
-            )
-
+        salvar_nova_anomalia = st.button(
+            "💾 Salvar nova anomalia",
+            type="primary",
+            key="salvar_nova_anomalia"
+        )
 
         if salvar_nova_anomalia:
 
-            if tipo_anomalia == "":
+            tipo_anomalia = normalizar_tipo_anomalia(
+                tipo_anomalia_selecionado,
+                outro_tipo_anomalia,
+            )
+
+            if (
+                tipo_anomalia_selecionado
+                == "Outra anomalia"
+                and
+                outro_tipo_anomalia.strip()
+                == ""
+            ):
 
                 st.error(
-                    "Informe o tipo da anomalia."
+                    "Informe qual é a outra anomalia."
                 )
 
-            elif localizacao_referencia == "":
+            elif localizacao_referencia.strip() == "":
 
                 st.error(
                     "Informe a localização de referência."
+                )
+
+            elif descricao_inicial.strip() == "":
+
+                st.error(
+                    "Informe a descrição inicial da anomalia."
                 )
 
             else:
@@ -429,7 +581,6 @@ def mostrar_modulo_anomalias(
                     nova_anomalia
                 )
 
-
                 nova_observacao = (
                     models.ObservacaoAnomalia(
                         anomalia_id=
@@ -443,13 +594,25 @@ def mostrar_modulo_anomalias(
                         abertura_fissura_mm=
                             (
                                 abertura_fissura_mm
-                                if abertura_fissura_mm > 0
+                                if (
+                                    tipo_exige_abertura_fissura(
+                                        tipo_anomalia_selecionado
+                                    )
+                                    and
+                                    abertura_fissura_mm > 0
+                                )
                                 else None
                             ),
                         extensao_anomalia_cm=
                             (
                                 extensao_anomalia_cm
-                                if extensao_anomalia_cm > 0
+                                if (
+                                    tipo_exige_extensao(
+                                        tipo_anomalia_selecionado
+                                    )
+                                    and
+                                    extensao_anomalia_cm > 0
+                                )
                                 else None
                             ),
                         situacao_observada=
@@ -480,6 +643,8 @@ def mostrar_modulo_anomalias(
                     f"Nova anomalia cadastrada com sucesso: "
                     f"{codigo_anomalia}."
                 )
+
+                st.rerun()
 
 
     # ========================================================
@@ -582,57 +747,77 @@ def mostrar_modulo_anomalias(
 
             else:
 
-                with st.form(
-                    "form_observacao_anomalia_existente"
+                tipo_existente = (
+                    anomalia_escolhida.tipo_anomalia
+                    or ""
+                )
+
+                descricao = st.text_area(
+                    "Descrição nesta inspeção",
+                    placeholder=(
+                        "Descreva o estado atual da anomalia "
+                        "e eventuais alterações observadas."
+                    ),
+                    key="obs_existente_descricao"
+                )
+
+                localizacao_detalhada = st.text_input(
+                    "Localização detalhada nesta inspeção",
+                    value=(
+                        anomalia_escolhida
+                        .localizacao_referencia
+                    ),
+                    key="obs_existente_localizacao"
+                )
+
+                abertura_fissura_mm = 0.0
+
+                if (
+                    "fissura" in tipo_existente.lower()
+                    or
+                    "trinca" in tipo_existente.lower()
                 ):
 
-                    descricao = st.text_area(
-                        "Descrição nesta inspeção"
-                    )
-
-                    localizacao_detalhada = st.text_input(
-                        "Localização detalhada nesta inspeção",
-                        value=(
-                            anomalia_escolhida
-                            .localizacao_referencia
+                    abertura_fissura_mm = (
+                        st.number_input(
+                            "Abertura da fissura (mm)",
+                            min_value=0.0,
+                            step=0.01,
+                            format="%.2f",
+                            key="obs_existente_abertura"
                         )
                     )
 
-                    abertura_fissura_mm = st.number_input(
-                        "Abertura da fissura (mm)",
-                        min_value=0.0,
-                        step=0.01,
-                        format="%.2f"
-                    )
+                extensao_anomalia_cm = st.number_input(
+                    "Extensão / dimensão principal da anomalia (cm)",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.1f",
+                    key="obs_existente_extensao"
+                )
 
-                    extensao_anomalia_cm = st.number_input(
-                        "Extensão da anomalia (cm)",
-                        min_value=0.0,
-                        step=0.1,
-                        format="%.1f"
-                    )
+                situacao_observada = st.selectbox(
+                    "Situação observada",
+                    [
+                        "Estável",
+                        "Evolução observada",
+                        "Redução aparente",
+                        "Reparada",
+                        "Não determinada"
+                    ],
+                    key="obs_existente_situacao"
+                )
 
-                    situacao_observada = st.selectbox(
-                        "Situação observada",
-                        [
-                            "Estável",
-                            "Evolução observada",
-                            "Redução aparente",
-                            "Reparada",
-                            "Não determinada"
-                        ]
-                    )
+                observacoes = st.text_area(
+                    "Observações",
+                    key="obs_existente_observacoes"
+                )
 
-                    observacoes = st.text_area(
-                        "Observações"
-                    )
-
-                    salvar_observacao = (
-                        st.form_submit_button(
-                            "Salvar observação"
-                        )
-                    )
-
+                salvar_observacao = st.button(
+                    "💾 Salvar observação",
+                    type="primary",
+                    key="salvar_observacao_existente"
+                )
 
                 if salvar_observacao:
 
@@ -679,6 +864,8 @@ def mostrar_modulo_anomalias(
                         "Nova observação registrada "
                         "para a anomalia existente."
                     )
+
+                    st.rerun()
 
 
     # ========================================================
@@ -747,6 +934,117 @@ def mostrar_modulo_anomalias(
                     f"**Descrição inicial:** "
                     f"{anomalia.descricao_inicial}"
                 )
+
+                st.divider()
+
+                st.markdown(
+                    "#### 🗑️ Excluir anomalia"
+                )
+
+                st.caption(
+                    "Use esta opção somente quando a anomalia foi "
+                    "cadastrada por engano. A exclusão remove o registro "
+                    "permanente, suas observações de inspeção e os vínculos "
+                    "com fotografias. As fotografias permanecem cadastradas."
+                )
+
+                confirmar_exclusao = st.checkbox(
+                    "Confirmo que esta anomalia foi cadastrada por engano",
+                    key=f"confirmar_exclusao_anomalia_{anomalia.id}"
+                )
+
+                if st.button(
+                    "🗑️ Excluir definitivamente esta anomalia",
+                    key=f"excluir_anomalia_{anomalia.id}",
+                    disabled=not confirmar_exclusao,
+                ):
+
+                    db_exclusao = SessionLocal()
+
+                    try:
+
+                        # Buscar observações vinculadas antes da exclusão.
+                        observacoes_para_excluir = (
+                            db_exclusao.query(
+                                models.ObservacaoAnomalia
+                            )
+                            .filter(
+                                models.ObservacaoAnomalia.anomalia_id
+                                == anomalia.id
+                            )
+                            .all()
+                        )
+
+                        ids_observacoes = [
+                            item.id
+                            for item in observacoes_para_excluir
+                        ]
+
+                        # Remover vínculos de fotografias com a anomalia.
+                        db_exclusao.query(
+                            models.VinculoFotografiaAnomalia
+                        ).filter(
+                            models.VinculoFotografiaAnomalia
+                            .anomalia_permanente_id
+                            == anomalia.id
+                        ).delete(
+                            synchronize_session=False
+                        )
+
+                        # Segurança adicional para vínculos por observação.
+                        if len(ids_observacoes) > 0:
+
+                            db_exclusao.query(
+                                models.VinculoFotografiaAnomalia
+                            ).filter(
+                                models.VinculoFotografiaAnomalia
+                                .observacao_anomalia_id
+                                .in_(ids_observacoes)
+                            ).delete(
+                                synchronize_session=False
+                            )
+
+                        # Remover as observações temporais.
+                        db_exclusao.query(
+                            models.ObservacaoAnomalia
+                        ).filter(
+                            models.ObservacaoAnomalia.anomalia_id
+                            == anomalia.id
+                        ).delete(
+                            synchronize_session=False
+                        )
+
+                        # Remover a anomalia permanente.
+                        db_exclusao.query(
+                            models.AnomaliaPermanente
+                        ).filter(
+                            models.AnomaliaPermanente.id
+                            == anomalia.id
+                        ).delete(
+                            synchronize_session=False
+                        )
+
+                        db_exclusao.commit()
+
+                    except Exception as erro:
+
+                        db_exclusao.rollback()
+                        db_exclusao.close()
+
+                        st.error(
+                            "Não foi possível excluir a anomalia. "
+                            f"Detalhe: {erro}"
+                        )
+
+                        st.stop()
+
+                    db_exclusao.close()
+
+                    st.success(
+                        "Anomalia excluída com sucesso."
+                    )
+
+                    st.rerun()
 
                 db = SessionLocal()
 
