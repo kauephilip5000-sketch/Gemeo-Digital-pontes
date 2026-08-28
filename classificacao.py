@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from database import SessionLocal, engine
 import models
+from feedback import definir_feedback_salvamento
 
 
 ESCALA_CLASSIFICACAO = {
@@ -1055,7 +1056,7 @@ def mostrar_classificacao_geral(
 
             return
 
-        st.success(
+        definir_feedback_salvamento(
             "Classificação da OAE salva com sucesso."
         )
 

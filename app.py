@@ -15,6 +15,10 @@ from rotineira import mostrar_modulo_rotineira
 from especial import mostrar_modulo_especial
 from extraordinaria import mostrar_modulo_extraordinaria
 from relatorios import mostrar_modulo_relatorios
+from feedback import (
+    ativar_feedback_global,
+    mostrar_feedback_salvamento,
+)
 
 from classificacao import (
     mostrar_modulo_classificacao,
@@ -22,6 +26,28 @@ from classificacao import (
     componentes_classificados,
     nota_texto
 )
+
+
+# ============================================================
+# NOMENCLATURA VISUAL
+# ============================================================
+
+def limpar_nome_componente_visual(valor):
+
+    if valor is None:
+        return "Não informado"
+
+    nome = str(valor).strip()
+
+    # Corrige apenas um artefato antigo de cadastro, como
+    # "a Longarina L2", sem alterar nomes normais.
+    if re.match(
+        r"^[aA]\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]",
+        nome
+    ):
+        nome = nome[2:].strip()
+
+    return nome
 
 
 # ============================================================
@@ -33,6 +59,10 @@ st.set_page_config(
     page_icon="🌉",
     layout="wide"
 )
+
+# Feedback visual global para qualquer salvamento no banco.
+ativar_feedback_global()
+mostrar_feedback_salvamento()
 
 
 # ============================================================
@@ -248,6 +278,22 @@ def buscar_inspecoes(oae_id):
     db.close()
 
     return dados
+
+
+def buscar_inspecao_mais_recente(oae_id):
+
+    inspecoes = buscar_inspecoes(oae_id)
+
+    if len(inspecoes) == 0:
+        return None
+
+    return max(
+        inspecoes,
+        key=lambda item: (
+            item.data_inspecao,
+            item.id
+        )
+    )
 
 
 def buscar_inspecoes_cronologicas(
@@ -908,6 +954,205 @@ def ir_para_pagina(nome):
 
 
 # ============================================================
+# SELETORES CONTEXTUAIS
+# ============================================================
+
+def rotulo_inspecao_contextual(inspecao, inspecoes):
+
+    ordenadas = sorted(
+        inspecoes,
+        key=lambda item: (
+            item.data_inspecao,
+            item.id
+        )
+    )
+
+    numero = next(
+        (
+            indice
+            for indice, item in enumerate(ordenadas, start=1)
+            if item.id == inspecao.id
+        ),
+        None
+    )
+
+    prefixo = (
+        f"Inspeção {numero:02d} • "
+        if numero is not None
+        else ""
+    )
+
+    return (
+        f"{prefixo}{inspecao.tipo_inspecao} • "
+        f"{inspecao.data_inspecao.strftime('%d/%m/%Y')}"
+    )
+
+
+def selecionar_inspecao_contextual(
+    oae_ativa,
+    chave,
+    label="Inspeção selecionada",
+):
+
+    if oae_ativa is None:
+        return None
+
+    inspecoes = buscar_inspecoes(
+        oae_ativa.id
+    )
+
+    if len(inspecoes) == 0:
+        st.info(
+            "Esta OAE ainda não possui inspeções cadastradas."
+        )
+        st.session_state.inspecao_ativa_id = None
+        return None
+
+    ids = [item.id for item in inspecoes]
+
+    id_atual = st.session_state.get(
+        "inspecao_ativa_id"
+    )
+
+    indice = (
+        ids.index(id_atual)
+        if id_atual in ids
+        else None
+    )
+
+    mapa = {
+        item.id: rotulo_inspecao_contextual(
+            item,
+            inspecoes
+        )
+        for item in inspecoes
+    }
+
+    selecionada_id = st.selectbox(
+        label,
+        options=ids,
+        index=indice,
+        format_func=lambda valor: mapa[valor],
+        placeholder="Selecione uma inspeção...",
+        key=chave,
+    )
+
+    if selecionada_id is None:
+        return None
+
+    st.session_state.inspecao_ativa_id = (
+        selecionada_id
+    )
+
+    selecionada = buscar_inspecao_por_id(
+        selecionada_id
+    )
+
+    mais_recente = buscar_inspecao_mais_recente(
+        oae_ativa.id
+    )
+
+    if (
+        selecionada is not None
+        and mais_recente is not None
+        and selecionada.id != mais_recente.id
+    ):
+        st.warning(
+            "Atenção: esta não é a inspeção mais recente da OAE. "
+            f"Você está trabalhando na campanha de "
+            f"{selecionada.data_inspecao.strftime('%d/%m/%Y')}."
+        )
+
+    return selecionada
+
+
+def selecionar_componente_contextual(
+    oae_ativa,
+    chave,
+    label="Componente selecionado",
+    permitir_nenhum=False,
+):
+
+    if oae_ativa is None:
+        return None
+
+    componentes = buscar_componentes(
+        oae_ativa.id
+    )
+
+    if len(componentes) == 0:
+        st.info(
+            "Esta OAE ainda não possui componentes cadastrados."
+        )
+        st.session_state.componente_ativo_id = None
+        return None
+
+    ids = [item.id for item in componentes]
+    mapa = {
+        item.id: (
+            f"{indice:02d} • "
+            f"{limpar_nome_componente_visual(item.nome)} • "
+            f"{item.categoria}"
+        )
+        for indice, item in enumerate(
+            componentes,
+            start=1
+        )
+    }
+
+    id_atual = st.session_state.get(
+        "componente_ativo_id"
+    )
+
+    if permitir_nenhum:
+        opcoes = [None] + ids
+        indice = (
+            opcoes.index(id_atual)
+            if id_atual in ids
+            else 0
+        )
+
+        selecionado_id = st.selectbox(
+            label,
+            options=opcoes,
+            index=indice,
+            format_func=lambda valor: (
+                "Nenhum — vista geral da OAE"
+                if valor is None
+                else mapa[valor]
+            ),
+            key=chave,
+        )
+
+    else:
+        indice = (
+            ids.index(id_atual)
+            if id_atual in ids
+            else None
+        )
+
+        selecionado_id = st.selectbox(
+            label,
+            options=ids,
+            index=indice,
+            format_func=lambda valor: mapa[valor],
+            placeholder="Selecione um componente...",
+            key=chave,
+        )
+
+    st.session_state.componente_ativo_id = (
+        selecionado_id
+    )
+
+    if selecionado_id is None:
+        return None
+
+    return buscar_componente_por_id(
+        selecionado_id
+    )
+
+
+# ============================================================
 # SESSION STATE
 # ============================================================
 
@@ -976,7 +1221,7 @@ with st.sidebar:
     st.divider()
 
     st.subheader(
-        "Contexto de trabalho"
+        "OAE selecionada"
     )
 
     if len(oaes) == 0:
@@ -1002,19 +1247,26 @@ with st.sidebar:
             )
 
         mapa_oaes = {
-            oae.id:
-                f"{oae.id} - {oae.nome}"
+            oae.id: (
+                f"{oae.nome}"
+                + (
+                    f" — {oae.codigo}"
+                    if oae.codigo
+                    else ""
+                )
+            )
             for oae in oaes
         }
 
         oae_id = st.selectbox(
-            "OAE ativa",
+            "Selecione a OAE",
             options=ids_oaes,
-            format_func=lambda x:
-                mapa_oaes[x],
+            format_func=lambda valor:
+                mapa_oaes[valor],
             index=ids_oaes.index(
                 st.session_state.oae_ativa_id
-            )
+            ),
+            label_visibility="collapsed",
         )
 
         if (
@@ -1029,132 +1281,54 @@ with st.sidebar:
             st.session_state.inspecao_ativa_id = None
             st.session_state.componente_ativo_id = None
 
+            for chave_contexto in [
+                "anomalias_inspecao_contexto",
+                "anomalias_componente_contexto",
+                "classificacao_inspecao_contexto",
+                "classificacao_componente_contexto",
+                "fotos_inspecao_contexto",
+                "fotos_componente_contexto",
+                "relatorios_inspecao_contexto",
+            ]:
+                st.session_state.pop(
+                    chave_contexto,
+                    None
+                )
+
             st.rerun()
 
         oae_ativa = buscar_oae_por_id(
             st.session_state.oae_ativa_id
         )
 
-        inspecoes_sidebar = buscar_inspecoes(
-            oae_ativa.id
-        )
+        if oae_ativa is not None:
 
-        if len(inspecoes_sidebar) == 0:
+            identificacao = []
 
-            st.info(
-                "Esta OAE ainda não possui inspeções."
-            )
-
-            st.session_state.inspecao_ativa_id = None
-
-        else:
-
-            ids_inspecoes = [
-                item.id
-                for item in inspecoes_sidebar
-            ]
-
-            if (
-                st.session_state.inspecao_ativa_id
-                not in ids_inspecoes
-            ):
-
-                st.session_state.inspecao_ativa_id = (
-                    ids_inspecoes[0]
+            if oae_ativa.municipio:
+                identificacao.append(
+                    oae_ativa.municipio
                 )
 
-            mapa_inspecoes = {
-                item.id:
-                    (
-                        f"{numero} - "
-                        f"{item.tipo_inspecao} - "
-                        f"{item.data_inspecao.strftime('%d/%m/%Y')}"
-                    )
-                for numero, item in enumerate(
-                    inspecoes_sidebar,
-                    start=1
-                )
-            }
-
-            inspecao_id = st.selectbox(
-                "Inspeção ativa",
-                options=ids_inspecoes,
-                format_func=lambda x:
-                    mapa_inspecoes[x],
-                index=ids_inspecoes.index(
-                    st.session_state.inspecao_ativa_id
-                )
-            )
-
-            st.session_state.inspecao_ativa_id = (
-                inspecao_id
-            )
-
-            inspecao_ativa = buscar_inspecao_por_id(
-                inspecao_id
-            )
-
-        componentes_sidebar = buscar_componentes(
-            oae_ativa.id
-        )
-
-        if len(componentes_sidebar) == 0:
-
-            st.info(
-                "Esta OAE ainda não possui componentes."
-            )
-
-            st.session_state.componente_ativo_id = None
-
-        else:
-
-            ids_componentes = [
-                item.id
-                for item in componentes_sidebar
-            ]
-
-            if (
-                st.session_state.componente_ativo_id
-                not in ids_componentes
-            ):
-
-                st.session_state.componente_ativo_id = (
-                    ids_componentes[0]
+            if oae_ativa.uf:
+                identificacao.append(
+                    oae_ativa.uf
                 )
 
-            mapa_componentes = {
-                item.id:
-                    f"{indice} - {item.nome}"
-                for indice, item in enumerate(
-                    componentes_sidebar,
-                    start=1
+            if identificacao:
+                st.caption(
+                    "📍 " + " / ".join(identificacao)
                 )
-            }
 
-            componente_id = st.selectbox(
-                "Componente ativo",
-                options=ids_componentes,
-                format_func=lambda x:
-                    mapa_componentes[x],
-                index=ids_componentes.index(
-                    st.session_state.componente_ativo_id
+            if oae_ativa.rodovia:
+                st.caption(
+                    f"🛣️ {oae_ativa.rodovia}"
                 )
-            )
-
-            st.session_state.componente_ativo_id = (
-                componente_id
-            )
-
-            componente_ativo = (
-                buscar_componente_por_id(
-                    componente_id
-                )
-            )
 
     st.divider()
 
     st.subheader(
-        "Menu"
+        "Navegação"
     )
 
     pagina = st.radio(
@@ -1191,60 +1365,54 @@ st.caption(
 
 if oae_ativa is not None:
 
-    coluna1, coluna2, coluna3 = (
-        st.columns(3)
-    )
+    with st.container(
+        border=True
+    ):
 
-    with coluna1:
-
-        st.metric(
-            "🌉 OAE ativa",
-            oae_ativa.nome
+        st.markdown(
+            f"**🌉 {oae_ativa.nome}**"
         )
 
-    with coluna2:
+        detalhes_contexto = []
 
-        if inspecao_ativa is None:
-
-            st.metric(
-                "📋 Inspeção ativa",
-                "Não cadastrada"
+        if oae_ativa.codigo:
+            detalhes_contexto.append(
+                oae_ativa.codigo
             )
 
-        else:
-
-            st.metric(
-                "📋 Inspeção ativa",
-                inspecao_ativa.data_inspecao.strftime(
-                    "%d/%m/%Y"
-                )
+        if oae_ativa.rodovia:
+            detalhes_contexto.append(
+                oae_ativa.rodovia
             )
 
+        localizacao_contexto = " / ".join(
+            valor
+            for valor in [
+                oae_ativa.municipio,
+                oae_ativa.uf
+            ]
+            if valor
+        )
+
+        if localizacao_contexto:
+            detalhes_contexto.append(
+                localizacao_contexto
+            )
+
+        if detalhes_contexto:
             st.caption(
-                inspecao_ativa.tipo_inspecao
+                " • ".join(detalhes_contexto)
             )
 
-    with coluna3:
+    inspecao_referencia = (
+        buscar_inspecao_mais_recente(
+            oae_ativa.id
+        )
+    )
 
-        if componente_ativo is None:
+else:
 
-            st.metric(
-                "🧱 Componente ativo",
-                "Não cadastrado"
-            )
-
-        else:
-
-            st.metric(
-                "🧱 Componente ativo",
-                componente_ativo.nome
-            )
-
-            st.caption(
-                componente_ativo.categoria
-            )
-
-    st.divider()
+    inspecao_referencia = None
 
 
 # ============================================================
@@ -1379,10 +1547,10 @@ if pagina == "🏠 Visão geral":
         st.divider()
 
         st.subheader(
-            "⭐ Condição da inspeção ativa"
+            "⭐ Condição da inspeção mais recente"
         )
 
-        if inspecao_ativa is None:
+        if inspecao_referencia is None:
 
             st.info(
                 "Esta OAE ainda não possui inspeções."
@@ -1401,13 +1569,13 @@ if pagina == "🏠 Visão geral":
             total_classificados = (
                 componentes_classificados(
                     oae_ativa.id,
-                    inspecao_ativa.id
+                    inspecao_referencia.id
                 )
             )
 
             notas = calcular_notas_finais(
                 oae_ativa.id,
-                inspecao_ativa.id
+                inspecao_referencia.id
             )
 
             if notas is None:
@@ -1521,10 +1689,10 @@ if pagina == "🏠 Visão geral":
             "📊 Andamento da inspeção"
         )
 
-        if inspecao_ativa is None:
+        if inspecao_referencia is None:
 
             st.info(
-                "Nenhuma inspeção ativa."
+                "Nenhuma inspeção cadastrada."
             )
 
         else:
@@ -1538,7 +1706,7 @@ if pagina == "🏠 Visão geral":
             classificados = (
                 componentes_classificados(
                     oae_ativa.id,
-                    inspecao_ativa.id
+                    inspecao_referencia.id
                 )
             )
 
@@ -1635,20 +1803,20 @@ if pagina == "🏠 Visão geral":
         with direita:
 
             st.subheader(
-                "📋 Resumo da inspeção ativa"
+                "📋 Resumo da inspeção mais recente"
             )
 
-            if inspecao_ativa is None:
+            if inspecao_referencia is None:
 
                 st.info(
-                    "Nenhuma inspeção ativa."
+                    "Nenhuma inspeção cadastrada."
                 )
 
             else:
 
                 resumo = contar_dados_inspecao(
                     oae_ativa.id,
-                    inspecao_ativa.id
+                    inspecao_referencia.id
                 )
 
                 st.metric(
@@ -1678,8 +1846,15 @@ if pagina == "🏠 Visão geral":
             "🕒 Últimas inspeções"
         )
 
-        inspecoes_recentes = buscar_inspecoes(
-            oae_ativa.id
+        inspecoes_recentes = sorted(
+            buscar_inspecoes(
+                oae_ativa.id
+            ),
+            key=lambda item: (
+                item.data_inspecao,
+                item.id
+            ),
+            reverse=True
         )
 
         if len(inspecoes_recentes) == 0:
@@ -1790,7 +1965,7 @@ if pagina == "🏠 Visão geral":
         with c3:
 
             if st.button(
-                "⭐ Classificar componente",
+                "⭐ Abrir classificação",
                 width="stretch"
             ):
 
@@ -2840,26 +3015,20 @@ elif pagina == "📋 Inspeções":
 
     else:
 
-        st.write(
-            f"**OAE:** "
-            f"{oae_ativa.id} - "
-            f"{oae_ativa.nome}"
+        st.caption(
+            "Cadastre e preencha cada modalidade de inspeção. "
+            "A seleção da campanha é feita dentro do próprio módulo."
         )
 
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(
             [
-                "📋 Inspeções cadastradas",
+                "📚 Campanhas cadastradas",
                 "🟦 Cadastral",
                 "🟩 Rotineira",
                 "🟨 Especial",
                 "🟥 Extraordinária",
-                "✅ Andamento da inspeção ativa"
             ]
         )
-
-        # ====================================================
-        # INSPEÇÕES CADASTRADAS
-        # ====================================================
 
         with tab1:
 
@@ -2877,7 +3046,10 @@ elif pagina == "📋 Inspeções":
 
                 dados = []
 
-                for inspecao in inspecoes:
+                for numero, inspecao in enumerate(
+                    inspecoes,
+                    start=1
+                ):
 
                     notas = calcular_notas_finais(
                         oae_ativa.id,
@@ -2885,58 +3057,37 @@ elif pagina == "📋 Inspeções":
                     )
 
                     if notas is None:
-
                         estrutural = "-"
                         funcional = "-"
                         durabilidade = "-"
-
                     else:
-
                         estrutural = (
                             str(notas["estrutural"])
-                            if notas["estrutural"]
-                            is not None
+                            if notas["estrutural"] is not None
                             else "—"
                         )
-
                         funcional = (
                             str(notas["funcional"])
-                            if notas["funcional"]
-                            is not None
+                            if notas["funcional"] is not None
                             else "NA"
                         )
-
                         durabilidade = (
                             str(notas["durabilidade"])
-                            if notas["durabilidade"]
-                            is not None
+                            if notas["durabilidade"] is not None
                             else "—"
                         )
 
                     dados.append(
                         {
-                            "ID":
-                                inspecao.id,
-
-                            "Data":
-                                inspecao.data_inspecao.strftime(
-                                    "%d/%m/%Y"
-                                ),
-
-                            "Tipo":
-                                inspecao.tipo_inspecao,
-
-                            "Responsável":
-                                inspecao.responsavel,
-
-                            "Estrutural":
-                                estrutural,
-
-                            "Funcional":
-                                funcional,
-
-                            "Durabilidade":
-                                durabilidade
+                            "Nº": numero,
+                            "Data": inspecao.data_inspecao.strftime(
+                                "%d/%m/%Y"
+                            ),
+                            "Tipo": inspecao.tipo_inspecao,
+                            "Responsável": inspecao.responsavel,
+                            "Estrutural": estrutural,
+                            "Funcional": funcional,
+                            "Durabilidade": durabilidade,
                         }
                     )
 
@@ -2946,179 +3097,29 @@ elif pagina == "📋 Inspeções":
                     hide_index=True
                 )
 
-        # ====================================================
-        # CADASTRAL
-        # ====================================================
-
         with tab2:
-
             mostrar_modulo_cadastral(
                 oae_ativa=oae_ativa,
-                inspecao_ativa=inspecao_ativa
+                inspecao_ativa=None
             )
-
-        # ====================================================
-        # ROTINEIRA
-        # ====================================================
 
         with tab3:
-
             mostrar_modulo_rotineira(
                 oae_ativa=oae_ativa,
-                inspecao_ativa=inspecao_ativa
+                inspecao_ativa=None
             )
-
-        # ====================================================
-        # ESPECIAL
-        # ====================================================
 
         with tab4:
-
             mostrar_modulo_especial(
                 oae_ativa=oae_ativa,
-                inspecao_ativa=inspecao_ativa
+                inspecao_ativa=None
             )
-
-        # ====================================================
-        # EXTRAORDINÁRIA
-        # ====================================================
 
         with tab5:
-
             mostrar_modulo_extraordinaria(
                 oae_ativa=oae_ativa,
-                inspecao_ativa=inspecao_ativa
+                inspecao_ativa=None
             )
-
-        # ====================================================
-        # ANDAMENTO DA INSPEÇÃO
-        # ====================================================
-
-        with tab6:
-
-            if inspecao_ativa is None:
-
-                st.info(
-                    "Nenhuma inspeção ativa."
-                )
-
-            else:
-
-                st.subheader(
-                    f"{inspecao_ativa.tipo_inspecao} - "
-                    f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
-                )
-
-                detalhe = buscar_detalhe_inspecao(
-                    inspecao_ativa.id
-                )
-
-                resumo = contar_dados_inspecao(
-                    oae_ativa.id,
-                    inspecao_ativa.id
-                )
-
-                classificados = (
-                    resumo[
-                        "componentes_classificados"
-                    ]
-                )
-
-                fotos = (
-                    resumo[
-                        "fotografias"
-                    ]
-                )
-
-                observacoes_anomalias = (
-                    resumo[
-                        "anomalias_observadas"
-                    ]
-                )
-
-                if (
-                    inspecao_ativa.tipo_inspecao
-                    == "Cadastral"
-                ):
-
-                    st.info(
-                        "O acompanhamento completo desta campanha "
-                        "está disponível na aba 🟦 Cadastral."
-                    )
-
-                elif (
-                    inspecao_ativa.tipo_inspecao
-                    == "Rotineira"
-                ):
-
-                    st.info(
-                        "O acompanhamento completo desta campanha "
-                        "está disponível na aba 🟩 Rotineira."
-                    )
-
-                elif (
-                    inspecao_ativa.tipo_inspecao
-                    == "Especial"
-                ):
-
-                    st.info(
-                        "O acompanhamento completo desta campanha "
-                        "está disponível na aba 🟨 Especial."
-                    )
-
-                elif (
-                    inspecao_ativa.tipo_inspecao
-                    == "Extraordinária"
-                ):
-
-                    st.info(
-                        "O acompanhamento completo desta campanha "
-                        "está disponível na aba 🟥 Extraordinária."
-                    )
-
-                    st.checkbox(
-                        "Terapia ou providência registrada",
-                        value=(
-                            detalhe is not None
-                            and
-                            bool(
-                                detalhe.terapia_recomendada
-                            )
-                        ),
-                        disabled=True,
-                        key="and_extra_terapia"
-                    )
-
-                st.divider()
-
-                st.subheader(
-                    "Resumo da campanha"
-                )
-
-                c1, c2, c3 = (
-                    st.columns(3)
-                )
-
-                with c1:
-
-                    st.metric(
-                        "Componentes classificados",
-                        classificados
-                    )
-
-                with c2:
-
-                    st.metric(
-                        "Anomalias observadas",
-                        observacoes_anomalias
-                    )
-
-                with c3:
-
-                    st.metric(
-                        "Fotografias",
-                        fotos
-                    )
 
 
 # ============================================================
@@ -3127,25 +3128,44 @@ elif pagina == "📋 Inspeções":
 
 elif pagina == "⚠️ Anomalias":
 
-    if (
-        oae_ativa is None
-        or
-        inspecao_ativa is None
-        or
-        componente_ativo is None
-    ):
+    st.subheader(
+        "Contexto do registro"
+    )
+
+    if oae_ativa is None:
 
         st.warning(
-            "Selecione OAE, inspeção e componente."
+            "Selecione uma OAE."
         )
 
     else:
 
-        mostrar_modulo_anomalias(
-            oae_ativa=oae_ativa,
-            inspecao_ativa=inspecao_ativa,
-            componente_ativo=componente_ativo
+        inspecao_anomalia = selecionar_inspecao_contextual(
+            oae_ativa,
+            chave="anomalias_inspecao_contexto",
         )
+
+        componente_anomalia = None
+
+        if inspecao_anomalia is not None:
+
+            componente_anomalia = (
+                selecionar_componente_contextual(
+                    oae_ativa,
+                    chave="anomalias_componente_contexto",
+                )
+            )
+
+        if (
+            inspecao_anomalia is not None
+            and componente_anomalia is not None
+        ):
+
+            mostrar_modulo_anomalias(
+                oae_ativa=oae_ativa,
+                inspecao_ativa=inspecao_anomalia,
+                componente_ativo=componente_anomalia
+            )
 
 
 # ============================================================
@@ -3154,11 +3174,54 @@ elif pagina == "⚠️ Anomalias":
 
 elif pagina == "⭐ Classificação":
 
-    mostrar_modulo_classificacao(
-        oae_ativa=oae_ativa,
-        inspecao_ativa=inspecao_ativa,
-        componente_ativo=componente_ativo
+    st.subheader(
+        "Contexto da classificação"
     )
+
+    if oae_ativa is None:
+
+        st.warning(
+            "Selecione uma OAE."
+        )
+
+    else:
+
+        inspecao_classificacao = (
+            selecionar_inspecao_contextual(
+                oae_ativa,
+                chave="classificacao_inspecao_contexto",
+            )
+        )
+
+        componente_classificacao = None
+
+        if (
+            inspecao_classificacao is not None
+            and inspecao_classificacao.tipo_inspecao
+            == "Especial"
+        ):
+
+            componente_classificacao = (
+                selecionar_componente_contextual(
+                    oae_ativa,
+                    chave="classificacao_componente_contexto",
+                    label="Componente a avaliar",
+                )
+            )
+
+        if inspecao_classificacao is not None:
+
+            if (
+                inspecao_classificacao.tipo_inspecao
+                != "Especial"
+                or componente_classificacao is not None
+            ):
+
+                mostrar_modulo_classificacao(
+                    oae_ativa=oae_ativa,
+                    inspecao_ativa=inspecao_classificacao,
+                    componente_ativo=componente_classificacao
+                )
 
 
 # ============================================================
@@ -3167,25 +3230,29 @@ elif pagina == "⭐ Classificação":
 
 elif pagina == "📷 Fotografias":
 
-    if (
-        oae_ativa is None
-        or
-        inspecao_ativa is None
-        or
-        componente_ativo is None
-    ):
+    st.subheader(
+        "Contexto do registro fotográfico"
+    )
+
+    if oae_ativa is None:
 
         st.warning(
-            "Selecione OAE, inspeção e componente."
+            "Selecione uma OAE."
         )
 
     else:
 
-        mostrar_modulo_fotografias(
-            oae_ativa=oae_ativa,
-            inspecao_ativa=inspecao_ativa,
-            componente_ativo=componente_ativo
+        inspecao_foto = selecionar_inspecao_contextual(
+            oae_ativa,
+            chave="fotos_inspecao_contexto",
         )
+
+        if inspecao_foto is not None:
+
+            mostrar_modulo_fotografias(
+                oae_ativa=oae_ativa,
+                inspecao_ativa=inspecao_foto
+            )
 
 
 # ============================================================
@@ -3217,7 +3284,35 @@ elif pagina == "📈 Histórico e evolução":
 
 elif pagina == "📄 Relatórios":
 
-    mostrar_modulo_relatorios(
-        oae_ativa=oae_ativa,
-        inspecao_ativa=inspecao_ativa,
+    st.header(
+        "📄 Relatórios"
     )
+
+    if oae_ativa is None:
+
+        st.warning(
+            "Selecione uma OAE."
+        )
+
+    else:
+
+        inspecao_relatorio = selecionar_inspecao_contextual(
+            oae_ativa,
+            chave="relatorios_inspecao_contexto",
+            label="Inspeção para o relatório",
+        )
+
+        if inspecao_relatorio is not None:
+
+            mostrar_modulo_relatorios(
+                oae_ativa=oae_ativa,
+                inspecao_ativa=inspecao_relatorio,
+            )
+
+
+# ============================================================
+# FEEDBACK DE SALVAMENTO SEM RERUN
+# ============================================================
+# Se alguma ação salvar dados e a página não executar st.rerun(),
+# a confirmação é exibida ao final da execução atual.
+mostrar_feedback_salvamento()

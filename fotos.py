@@ -377,7 +377,7 @@ def buscar_nome_componente(
 def mostrar_modulo_fotografias(
     oae_ativa,
     inspecao_ativa,
-    componente_ativo
+    componente_ativo=None
 ):
 
     st.header(
@@ -429,45 +429,12 @@ def mostrar_modulo_fotografias(
         f"{inspecao_ativa.data_inspecao.strftime('%d/%m/%Y')}"
     )
 
-    if componente_ativo is not None:
-
-        numero_componente = numero_visual_componente(
-            oae_ativa.id,
-            componente_ativo.id,
-        )
-
-        st.write(
-            f"**Componente ativo:** "
-            f"{numero_componente} - "
-            f"{componente_ativo.nome}"
-        )
-
-    else:
-
-        st.write(
-            "**Componente ativo:** nenhum componente selecionado"
-        )
+    st.caption(
+        "Defina abaixo o que a fotografia registra. "
+        "O componente será solicitado somente quando necessário."
+    )
 
     st.divider()
-
-
-    # ========================================================
-    # OBSERVAÇÕES DE ANOMALIAS DISPONÍVEIS
-    # ========================================================
-
-    if componente_ativo is not None:
-
-        observacoes_disponiveis = (
-            buscar_observacoes_anomalias(
-                oae_id=oae_ativa.id,
-                inspecao_id=inspecao_ativa.id,
-                componente_id=componente_ativo.id
-            )
-        )
-
-    else:
-
-        observacoes_disponiveis = []
 
 
     # ========================================================
@@ -486,8 +453,11 @@ def mostrar_modulo_fotografias(
             "Anomalia observada nesta inspeção"
         ],
         horizontal=True,
-        key="escopo_fotografia"
+        key=f"escopo_fotografia_{inspecao_ativa.id}"
     )
+
+    componente_selecionado = None
+    observacoes_disponiveis = []
 
     if escopo_fotografia == "Vista geral da OAE":
 
@@ -496,27 +466,94 @@ def mostrar_modulo_fotografias(
             "sem componente específico."
         )
 
-    elif escopo_fotografia == "Componente específico":
+    else:
 
-        if componente_ativo is None:
+        componentes = _buscar_componentes_ordenados(
+            oae_ativa.id
+        )
+
+        if len(componentes) == 0:
 
             st.warning(
-                "Selecione um componente ativo para registrar "
-                "uma fotografia de componente."
+                "Esta OAE ainda não possui componentes cadastrados."
             )
 
         else:
 
-            st.info(
-                f"Esta fotografia será vinculada ao componente "
-                f"{componente_ativo.nome}."
+            mapa_componentes = {
+                item.id: item
+                for item in componentes
+            }
+
+            mapa_rotulos = {
+                item.id: (
+                    f"{numero:02d} • "
+                    f"{item.nome} • "
+                    f"{item.categoria or 'Categoria não informada'}"
+                )
+                for numero, item in enumerate(
+                    componentes,
+                    start=1
+                )
+            }
+
+            sufixo_chave = (
+                "componente"
+                if escopo_fotografia == "Componente específico"
+                else "anomalia"
             )
 
-    elif componente_ativo is None:
+            componente_id = st.selectbox(
+                (
+                    "Componente fotografado"
+                    if escopo_fotografia == "Componente específico"
+                    else "Componente da anomalia"
+                ),
+                options=list(mapa_componentes.keys()),
+                index=None,
+                placeholder="Selecione um componente...",
+                format_func=lambda valor: mapa_rotulos[valor],
+                key=(
+                    f"foto_componente_{inspecao_ativa.id}_"
+                    f"{sufixo_chave}"
+                ),
+            )
 
-        st.warning(
-            "Selecione o componente da anomalia antes de continuar."
-        )
+            if componente_id is not None:
+
+                componente_selecionado = (
+                    mapa_componentes[componente_id]
+                )
+
+                if escopo_fotografia == "Componente específico":
+
+                    st.info(
+                        "Esta fotografia será vinculada ao componente "
+                        f"{componente_selecionado.nome}."
+                    )
+
+                else:
+
+                    observacoes_disponiveis = (
+                        buscar_observacoes_anomalias(
+                            oae_id=oae_ativa.id,
+                            inspecao_id=inspecao_ativa.id,
+                            componente_id=componente_selecionado.id
+                        )
+                    )
+
+            elif escopo_fotografia == "Componente específico":
+
+                st.caption(
+                    "Selecione o componente que aparece na fotografia."
+                )
+
+            else:
+
+                st.caption(
+                    "Selecione primeiro o componente onde a anomalia "
+                    "foi observada."
+                )
 
 
     # ========================================================
@@ -530,7 +567,11 @@ def mostrar_modulo_fotografias(
         == "Anomalia observada nesta inspeção"
     ):
 
-        if len(observacoes_disponiveis) == 0:
+        if componente_selecionado is None:
+
+            pass
+
+        elif len(observacoes_disponiveis) == 0:
 
             st.warning(
                 "Não existe nenhuma anomalia com observação "
@@ -636,7 +677,7 @@ def mostrar_modulo_fotografias(
         escopo_fotografia
         == "Componente específico"
         and
-        componente_ativo is None
+        componente_selecionado is None
     ):
 
         pode_salvar = False
@@ -646,7 +687,7 @@ def mostrar_modulo_fotografias(
         == "Anomalia observada nesta inspeção"
         and
         (
-            componente_ativo is None
+            componente_selecionado is None
             or
             item_anomalia_selecionado is None
         )
@@ -656,7 +697,7 @@ def mostrar_modulo_fotografias(
 
 
     with st.form(
-        "form_registro_fotografico"
+        f"form_registro_fotografico_{inspecao_ativa.id}"
     ):
 
         arquivo = st.file_uploader(
@@ -788,7 +829,7 @@ def mostrar_modulo_fotografias(
                 componente_id=(
                     None
                     if escopo_fotografia == "Vista geral da OAE"
-                    else componente_ativo.id
+                    else componente_selecionado.id
                 ),
 
                 # O modelo antigo não será mais utilizado

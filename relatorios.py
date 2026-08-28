@@ -4,38 +4,38 @@ from datetime import datetime
 from html import escape
 from io import BytesIO
 from pathlib import Path
+import re
 
 from database import SessionLocal
 import models
+
+from classificacao import (
+    calcular_classificacao_consolidada,
+    buscar_classificacao_oae,
+    buscar_classificacoes_componentes as buscar_classificacoes_modulo,
+    eh_inspecao_especial,
+    nota_texto,
+)
 
 
 # ============================================================
 # RELATÓRIOS DO GÊMEO DIGITAL
 #
-# O módulo consolida informações já registradas nos demais
-# módulos. Ele não cria diagnóstico, classificação ou
-# recomendação técnica automaticamente.
-#
-# A responsabilidade pelas informações técnicas e pela
-# validação do relatório permanece com o profissional.
+# Este módulo APENAS organiza e apresenta dados existentes no
+# banco de dados. Não cria diagnóstico, nota ou terapia.
+# A validação permanece sob responsabilidade do profissional.
 # ============================================================
 
 
 # ============================================================
 # REPORTLAB
-#
-# O PDF é opcional para evitar que a ausência da biblioteca
-# impeça a inicialização de todo o sistema.
 # ============================================================
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import (
-        getSampleStyleSheet,
-        ParagraphStyle,
-    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import (
         SimpleDocTemplate,
@@ -45,6 +45,7 @@ try:
         TableStyle,
         PageBreak,
         KeepTogether,
+        Image as RLImage,
         HRFlowable,
     )
 
@@ -55,11 +56,25 @@ except Exception:
 
 
 # ============================================================
+# CONSTANTES VISUAIS DO PDF
+# ============================================================
+
+COR_AZUL = "#173B63"
+COR_AZUL_2 = "#2B6FAE"
+COR_AZUL_CLARO = "#EAF2F9"
+COR_CINZA = "#F4F6F8"
+COR_LINHA = "#CCD5DF"
+COR_TEXTO = "#24313D"
+COR_LARANJA = "#E89B27"
+COR_VERDE = "#3D8B62"
+COR_VERMELHO = "#B94A48"
+
+
+# ============================================================
 # FUNÇÕES AUXILIARES
 # ============================================================
 
 def texto(valor, padrao="Não informado"):
-
     if valor is None:
         return padrao
 
@@ -72,76 +87,130 @@ def texto(valor, padrao="Não informado"):
 
 
 def data_br(valor):
-
     if valor is None:
         return "Não informado"
 
     try:
         return valor.strftime("%d/%m/%Y")
-
     except Exception:
         return texto(valor)
 
 
 def numero_br(valor, casas=2):
-
     if valor is None:
         return "Não informado"
 
     try:
         return f"{float(valor):.{casas}f}".replace(".", ",")
-
     except Exception:
         return texto(valor)
 
 
 def sanitizar_nome_arquivo(valor):
-
-    valor = texto(
-        valor,
-        "relatorio",
-    )
-
+    valor = texto(valor, "relatorio")
     permitidos = []
 
     for caractere in valor:
-
-        if (
-            caractere.isalnum()
-            or caractere in ["-", "_"]
-        ):
-            permitidos.append(
-                caractere
-            )
-
+        if caractere.isalnum() or caractere in ["-", "_"]:
+            permitidos.append(caractere)
         elif caractere in [" ", ".", "/"]:
-
             permitidos.append("_")
 
-    resultado = "".join(
-        permitidos
-    ).strip("_")
+    resultado = "".join(permitidos).strip("_")
+    return resultado or "relatorio"
 
-    if resultado == "":
-        resultado = "relatorio"
 
-    return resultado
+def limpar_nome_componente(valor):
+    """
+    Corrige apenas um artefato de nomenclatura antigo do banco,
+    como 'a Longarina L2'. Não altera nomes normais.
+    """
+    nome = texto(valor, "Não localizado").strip()
+
+    if re.match(r"^[aA]\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]", nome):
+        nome = nome[2:].strip()
+
+    return nome
+
+
+def nome_oae_exibicao(oae):
+    return texto(getattr(oae, "nome", None))
+
+
+def classificacao_com_condicao(nota):
+    if nota is None:
+        return "Não classificada"
+
+    try:
+        nota_int = int(nota)
+        return f"{nota_int} - {nota_texto(nota_int)}"
+    except Exception:
+        return texto(nota)
+
+
+def numero_visual_inspecao(inspecao, inspecoes_cronologicas):
+    for indice, item in enumerate(inspecoes_cronologicas, start=1):
+        if item.id == inspecao.id:
+            return indice
+    return None
+
+
+def rotulo_inspecao(inspecao, inspecoes_cronologicas=None):
+    numero = None
+
+    if inspecoes_cronologicas is not None:
+        numero = numero_visual_inspecao(
+            inspecao,
+            inspecoes_cronologicas,
+        )
+
+    prefixo = (
+        f"Inspeção {numero:02d} — "
+        if isinstance(numero, int)
+        else ""
+    )
+
+    return (
+        f"{prefixo}{texto(inspecao.tipo_inspecao)} — "
+        f"{data_br(inspecao.data_inspecao)}"
+    )
+
+
+def caminho_foto_existente(foto):
+    caminho_original = texto(
+        getattr(foto, "caminho_arquivo", None),
+        "",
+    )
+
+    if caminho_original == "":
+        return None
+
+    caminho = Path(caminho_original)
+
+    candidatos = [
+        caminho,
+        Path.cwd() / caminho,
+        Path(__file__).resolve().parent / caminho,
+    ]
+
+    for candidato in candidatos:
+        try:
+            if candidato.exists() and candidato.is_file():
+                return candidato.resolve()
+        except Exception:
+            pass
+
+    return None
 
 
 def dict_objeto(objeto, campos):
-
     dados = {}
 
     if objeto is None:
         return dados
 
     for campo, titulo in campos:
-
-        dados[titulo] = getattr(
-            objeto,
-            campo,
-            None,
-        )
+        dados[titulo] = getattr(objeto, campo, None)
 
     return dados
 
@@ -151,37 +220,28 @@ def dict_objeto(objeto, campos):
 # ============================================================
 
 def buscar_inspecoes_oae(oae_id):
-
     db = SessionLocal()
 
     dados = (
         db.query(models.Inspecao)
-        .filter(
-            models.Inspecao.oae_id
-            == oae_id
-        )
+        .filter(models.Inspecao.oae_id == oae_id)
         .order_by(
-            models.Inspecao.data_inspecao.desc(),
-            models.Inspecao.id.desc(),
+            models.Inspecao.data_inspecao.asc(),
+            models.Inspecao.id.asc(),
         )
         .all()
     )
 
     db.close()
-
     return dados
 
 
 def buscar_componentes_oae(oae_id):
-
     db = SessionLocal()
 
     dados = (
         db.query(models.Componente)
-        .filter(
-            models.Componente.oae_id
-            == oae_id
-        )
+        .filter(models.Componente.oae_id == oae_id)
         .order_by(
             models.Componente.categoria,
             models.Componente.nome,
@@ -191,41 +251,15 @@ def buscar_componentes_oae(oae_id):
     )
 
     db.close()
-
-    return dados
-
-
-def buscar_classificacoes_inspecao(inspecao_id):
-
-    db = SessionLocal()
-
-    dados = (
-        db.query(models.Classificacao)
-        .filter(
-            models.Classificacao.inspecao_id
-            == inspecao_id
-        )
-        .order_by(
-            models.Classificacao.componente_id
-        )
-        .all()
-    )
-
-    db.close()
-
     return dados
 
 
 def buscar_fotografias_inspecao(inspecao_id):
-
     db = SessionLocal()
 
     dados = (
         db.query(models.Fotografia)
-        .filter(
-            models.Fotografia.inspecao_id
-            == inspecao_id
-        )
+        .filter(models.Fotografia.inspecao_id == inspecao_id)
         .order_by(
             models.Fotografia.data_foto,
             models.Fotografia.id,
@@ -234,20 +268,15 @@ def buscar_fotografias_inspecao(inspecao_id):
     )
 
     db.close()
-
     return dados
 
 
 def buscar_anomalias_oae(oae_id):
-
     db = SessionLocal()
 
     dados = (
         db.query(models.AnomaliaPermanente)
-        .filter(
-            models.AnomaliaPermanente.oae_id
-            == oae_id
-        )
+        .filter(models.AnomaliaPermanente.oae_id == oae_id)
         .order_by(
             models.AnomaliaPermanente.componente_id,
             models.AnomaliaPermanente.id,
@@ -256,31 +285,18 @@ def buscar_anomalias_oae(oae_id):
     )
 
     db.close()
-
     return dados
 
 
-def buscar_anomalias_relacionadas_inspecao(
-    oae_id,
-    inspecao,
-):
-
-    todas = buscar_anomalias_oae(
-        oae_id
-    )
-
+def buscar_anomalias_relacionadas_inspecao(oae_id, inspecao):
+    todas = buscar_anomalias_oae(oae_id)
     resultado = []
-
     db = SessionLocal()
 
     for anomalia in todas:
-
         origem = (
             db.query(models.Inspecao)
-            .filter(
-                models.Inspecao.id
-                == anomalia.inspecao_origem_id
-            )
+            .filter(models.Inspecao.id == anomalia.inspecao_origem_id)
             .first()
         )
 
@@ -288,13 +304,10 @@ def buscar_anomalias_relacionadas_inspecao(
             continue
 
         nasceu_antes_ou_na_inspecao = (
-            origem.data_inspecao
-            < inspecao.data_inspecao
+            origem.data_inspecao < inspecao.data_inspecao
             or (
-                origem.data_inspecao
-                == inspecao.data_inspecao
-                and origem.id
-                <= inspecao.id
+                origem.data_inspecao == inspecao.data_inspecao
+                and origem.id <= inspecao.id
             )
         )
 
@@ -303,99 +316,64 @@ def buscar_anomalias_relacionadas_inspecao(
 
         observacao = (
             db.query(models.ObservacaoAnomalia)
-            .filter(
-                models.ObservacaoAnomalia.anomalia_id
-                == anomalia.id
-            )
-            .filter(
-                models.ObservacaoAnomalia.inspecao_id
-                == inspecao.id
-            )
+            .filter(models.ObservacaoAnomalia.anomalia_id == anomalia.id)
+            .filter(models.ObservacaoAnomalia.inspecao_id == inspecao.id)
             .first()
         )
 
         if (
-            anomalia.inspecao_origem_id
-            == inspecao.id
+            anomalia.inspecao_origem_id == inspecao.id
             or observacao is not None
         ):
-
-            resultado.append(
-                (
-                    anomalia,
-                    observacao,
-                )
-            )
+            resultado.append((anomalia, observacao))
 
     db.close()
-
     return resultado
 
 
 def mapa_componentes(oae_id):
-
     return {
         item.id: item
-        for item in buscar_componentes_oae(
-            oae_id
+        for item in buscar_componentes_oae(oae_id)
+    }
+
+
+def buscar_vinculo_foto_anomalia(fotografia_id):
+    if not hasattr(models, "VinculoFotografiaAnomalia"):
+        return None
+
+    db = SessionLocal()
+
+    try:
+        vinculo = (
+            db.query(models.VinculoFotografiaAnomalia)
+            .filter(
+                models.VinculoFotografiaAnomalia.fotografia_id
+                == fotografia_id
+            )
+            .first()
         )
-    }
+    except Exception:
+        vinculo = None
+
+    db.close()
+    return vinculo
 
 
-# ============================================================
-# CLASSIFICAÇÃO CONSOLIDADA
-#
-# A consolidação abaixo considera a menor nota atribuída
-# entre os componentes para cada parâmetro.
-#
-# É apenas consolidação de registros já informados pelo
-# profissional no módulo de classificação.
-# ============================================================
+def buscar_anomalia_por_id(anomalia_id):
+    if anomalia_id is None:
+        return None
 
-def consolidar_classificacao(classificacoes):
+    db = SessionLocal()
 
-    if len(classificacoes) == 0:
+    dado = (
+        db.query(models.AnomaliaPermanente)
+        .filter(models.AnomaliaPermanente.id == anomalia_id)
+        .first()
+    )
 
-        return {
-            "estrutural": None,
-            "funcional": None,
-            "durabilidade": None,
-        }
-
-    estruturais = [
-        item.nota_estrutural
-        for item in classificacoes
-        if item.nota_estrutural is not None
-    ]
-
-    funcionais = [
-        item.nota_funcional
-        for item in classificacoes
-        if item.nota_funcional is not None
-    ]
-
-    durabilidades = [
-        item.nota_durabilidade
-        for item in classificacoes
-        if item.nota_durabilidade is not None
-    ]
-
-    return {
-        "estrutural":
-            min(estruturais)
-            if len(estruturais) > 0
-            else None,
-
-        "funcional":
-            min(funcionais)
-            if len(funcionais) > 0
-            else None,
-
-        "durabilidade":
-            min(durabilidades)
-            if len(durabilidades) > 0
-            else None,
-    }
+    db.close()
+    return dado
 
 
 # ============================================================
@@ -403,46 +381,34 @@ def consolidar_classificacao(classificacoes):
 # ============================================================
 
 def buscar_detalhe_generico(inspecao_id):
-
     db = SessionLocal()
 
     dado = (
         db.query(models.DetalheInspecao)
-        .filter(
-            models.DetalheInspecao.inspecao_id
-            == inspecao_id
-        )
+        .filter(models.DetalheInspecao.inspecao_id == inspecao_id)
         .first()
     )
 
     db.close()
-
     return dado
 
 
 def buscar_dados_cadastral(inspecao_id):
-
     db = SessionLocal()
 
     dado = (
         db.query(models.InspecaoCadastral)
-        .filter(
-            models.InspecaoCadastral.inspecao_id
-            == inspecao_id
-        )
+        .filter(models.InspecaoCadastral.inspecao_id == inspecao_id)
         .first()
     )
 
     db.close()
-
     return dado
 
 
 def buscar_dados_rotineira(inspecao_id):
-
     try:
         from rotineira import RegistroRotineira
-
     except Exception:
         return None
 
@@ -450,23 +416,17 @@ def buscar_dados_rotineira(inspecao_id):
 
     dado = (
         db.query(RegistroRotineira)
-        .filter(
-            RegistroRotineira.inspecao_id
-            == inspecao_id
-        )
+        .filter(RegistroRotineira.inspecao_id == inspecao_id)
         .first()
     )
 
     db.close()
-
     return dado
 
 
 def buscar_dados_especial(inspecao_id):
-
     try:
         from especial import RegistroEspecial
-
     except Exception:
         return None
 
@@ -474,23 +434,17 @@ def buscar_dados_especial(inspecao_id):
 
     dado = (
         db.query(RegistroEspecial)
-        .filter(
-            RegistroEspecial.inspecao_id
-            == inspecao_id
-        )
+        .filter(RegistroEspecial.inspecao_id == inspecao_id)
         .first()
     )
 
     db.close()
-
     return dado
 
 
 def buscar_dados_extraordinaria(inspecao_id):
-
     try:
         from extraordinaria import RegistroExtraordinaria
-
     except Exception:
         return None
 
@@ -498,85 +452,41 @@ def buscar_dados_extraordinaria(inspecao_id):
 
     dado = (
         db.query(RegistroExtraordinaria)
-        .filter(
-            RegistroExtraordinaria.inspecao_id
-            == inspecao_id
-        )
+        .filter(RegistroExtraordinaria.inspecao_id == inspecao_id)
         .first()
     )
 
     db.close()
-
     return dado
 
 
 def secoes_especificas_inspecao(inspecao):
-
-    tipo = (
-        inspecao.tipo_inspecao
-        or ""
-    ).strip()
-
+    tipo = texto(inspecao.tipo_inspecao, "").strip()
     secoes = []
 
-    detalhe = buscar_detalhe_generico(
-        inspecao.id
-    )
+    detalhe = buscar_detalhe_generico(inspecao.id)
 
     if detalhe is not None:
-
         campos_detalhe = [
-            (
-                "procedimento_utilizado",
-                "Procedimento utilizado",
-            ),
-            (
-                "ensaios_previstos",
-                "Ensaios previstos",
-            ),
-            (
-                "diagnostico",
-                "Diagnóstico",
-            ),
-            (
-                "recomendacoes",
-                "Recomendações",
-            ),
+            ("procedimento_utilizado", "Procedimento utilizado"),
+            ("ensaios_previstos", "Ensaios previstos"),
+            ("diagnostico", "Diagnóstico"),
+            ("recomendacoes", "Recomendações"),
         ]
 
-        dados = dict_objeto(
-            detalhe,
-            campos_detalhe,
-        )
+        dados = dict_objeto(detalhe, campos_detalhe)
 
-        if any(
-            texto(v, "") != ""
-            for v in dados.values()
-        ):
-
-            secoes.append(
-                (
-                    "Informações técnicas gerais",
-                    dados,
-                )
-            )
+        if any(texto(v, "") != "" for v in dados.values()):
+            secoes.append(("Informações técnicas gerais", dados))
 
     if tipo == "Cadastral":
-
-        registro = buscar_dados_cadastral(
-            inspecao.id
-        )
+        registro = buscar_dados_cadastral(inspecao.id)
 
         if registro is not None:
-
             campos = []
 
             for coluna in registro.__table__.columns:
-
-                if coluna.name in [
-                    "id",
-                    "inspecao_id",
-                ]:
+                if coluna.name in ["id", "inspecao_id"]:
                     continue
 
                 titulo = (
@@ -585,302 +495,155 @@ def secoes_especificas_inspecao(inspecao):
                     .strip()
                     .capitalize()
                 )
-
-                campos.append(
-                    (
-                        coluna.name,
-                        titulo,
-                    )
-                )
+                campos.append((coluna.name, titulo))
 
             secoes.append(
                 (
                     "Dados da inspeção cadastral",
-                    dict_objeto(
-                        registro,
-                        campos,
-                    ),
+                    dict_objeto(registro, campos),
                 )
             )
 
     elif tipo == "Rotineira":
-
-        registro = buscar_dados_rotineira(
-            inspecao.id
-        )
+        registro = buscar_dados_rotineira(inspecao.id)
 
         if registro is not None:
+            intervencoes = dict_objeto(
+                registro,
+                [
+                    ("reparos", "Reparos"),
+                    ("alargamento", "Alargamento"),
+                    ("reforcos", "Reforços"),
+                    ("outras_intervencoes", "Outras intervenções"),
+                ],
+            )
 
-            campos = [
+            alteracoes = dict_objeto(
+                registro,
+                [
+                    (
+                        "comentarios_alteracoes",
+                        "Alterações em relação à inspeção anterior",
+                    ),
+                    (
+                        "informacoes_complementares",
+                        "Informações complementares",
+                    ),
+                    (
+                        "abrangencia_fotografica",
+                        "Abrangência fotográfica",
+                    ),
+                ],
+            )
+
+            terapia = dict_objeto(
+                registro,
+                [
+                    (
+                        "recomendacoes_terapeuticas",
+                        "Recomendações terapêuticas",
+                    ),
+                ],
+            )
+
+            secoes.append(("Intervenções verificadas", intervencoes))
+            secoes.append(("Alterações e informações da campanha", alteracoes))
+            secoes.append(("Recomendações terapêuticas", terapia))
+
+    elif tipo == "Especial":
+        registro = buscar_dados_especial(inspecao.id)
+
+        if registro is not None:
+            grupos = [
                 (
-                    "reparos",
-                    "Reparos",
+                    "Localização - inspeção especial",
+                    [
+                        ("rodovia_ferrovia", "Rodovia ou ferrovia"),
+                        ("nome_obra", "Nome da obra"),
+                        ("quilometro", "Quilômetro"),
+                        ("coordenadas", "Coordenadas"),
+                        ("sentido", "Sentido"),
+                        ("jurisdicao", "Jurisdição"),
+                    ],
                 ),
                 (
-                    "alargamento",
-                    "Alargamento",
+                    "Descrição da obra - inspeção especial",
+                    [
+                        ("descricao_obra", "Descrição da obra"),
+                        ("historico_obra", "Histórico da obra"),
+                        ("classe_portante", "Classe portante provável"),
+                        ("desenhos_memoriais", "Desenhos e memoriais"),
+                        (
+                            "diferencas_projeto_original",
+                            "Diferenças do projeto original",
+                        ),
+                        ("condicoes_ambientais", "Condições ambientais"),
+                        ("caracteristicas_trafego", "Características do tráfego"),
+                    ],
                 ),
                 (
-                    "reforcos",
-                    "Reforços",
+                    "Patologia - inspeção especial",
+                    [
+                        ("sintese_patologia", "Síntese de patologia"),
+                        (
+                            "mecanismo_deterioracao",
+                            "Mecanismos de deterioração",
+                        ),
+                        ("causas_provaveis", "Causas prováveis"),
+                    ],
                 ),
                 (
-                    "outras_intervencoes",
-                    "Outras intervenções",
+                    "Ensaios - inspeção especial",
+                    [
+                        ("descricao_ensaios", "Descrição dos ensaios"),
+                        ("localizacao_ensaios", "Localização dos ensaios"),
+                        ("resultados_ensaios", "Resultados"),
+                        ("interpretacao_ensaios", "Interpretação"),
+                        ("metodologia_ensaios", "Metodologia"),
+                        (
+                            "normas_referencia_ensaios",
+                            "Normas de referência",
+                        ),
+                    ],
                 ),
                 (
-                    "comentarios_alteracoes",
-                    "Alterações em relação à inspeção anterior",
-                ),
-                (
-                    "informacoes_complementares",
-                    "Informações complementares",
-                ),
-                (
-                    "recomendacoes_terapeuticas",
-                    "Recomendações terapêuticas",
-                ),
-                (
-                    "abrangencia_fotografica",
-                    "Abrangência fotográfica",
+                    "Diagnóstico e terapia - inspeção especial",
+                    [
+                        ("diagnostico", "Diagnóstico"),
+                        (
+                            "resumo_analise_estrutural",
+                            "Resumo da análise estrutural",
+                        ),
+                        ("terapia_recomendada", "Terapia recomendada"),
+                        (
+                            "metodologia_recuperacao",
+                            "Metodologia de recuperação",
+                        ),
+                        ("reparos_recomendados", "Reparos recomendados"),
+                        (
+                            "recuperacao_recomendada",
+                            "Recuperação recomendada",
+                        ),
+                        ("reforco_recomendado", "Reforço recomendado"),
+                        (
+                            "conclusoes_recomendacoes",
+                            "Conclusões e recomendações",
+                        ),
+                    ],
                 ),
             ]
 
-            secoes.append(
-                (
-                    "Síntese da inspeção rotineira",
-                    dict_objeto(
-                        registro,
-                        campos,
-                    ),
-                )
-            )
+            for titulo, campos in grupos:
+                secoes.append((titulo, dict_objeto(registro, campos)))
 
-    elif tipo == "Especial":
-
-        registro = buscar_dados_especial(
-            inspecao.id
-        )
+    elif tipo == "Extraordinária":
+        registro = buscar_dados_extraordinaria(inspecao.id)
 
         if registro is not None:
-
-            secoes.append(
-                (
-                    "Localização - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "rodovia_ferrovia",
-                                "Rodovia ou ferrovia",
-                            ),
-                            (
-                                "nome_obra",
-                                "Nome da obra",
-                            ),
-                            (
-                                "quilometro",
-                                "Quilômetro",
-                            ),
-                            (
-                                "coordenadas",
-                                "Coordenadas",
-                            ),
-                            (
-                                "sentido",
-                                "Sentido",
-                            ),
-                            (
-                                "jurisdicao",
-                                "Jurisdição",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-            secoes.append(
-                (
-                    "Descrição da obra - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "descricao_obra",
-                                "Descrição da obra",
-                            ),
-                            (
-                                "historico_obra",
-                                "Histórico da obra",
-                            ),
-                            (
-                                "classe_portante",
-                                "Classe portante provável",
-                            ),
-                            (
-                                "desenhos_memoriais",
-                                "Desenhos e memoriais",
-                            ),
-                            (
-                                "diferencas_projeto_original",
-                                "Diferenças do projeto original",
-                            ),
-                            (
-                                "condicoes_ambientais",
-                                "Condições ambientais",
-                            ),
-                            (
-                                "caracteristicas_trafego",
-                                "Características do tráfego",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-            secoes.append(
-                (
-                    "Patologia - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "sintese_patologia",
-                                "Síntese de patologia",
-                            ),
-                            (
-                                "mecanismo_deterioracao",
-                                "Mecanismos de deterioração",
-                            ),
-                            (
-                                "causas_provaveis",
-                                "Causas prováveis",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-            secoes.append(
-                (
-                    "Ensaios - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "descricao_ensaios",
-                                "Descrição dos ensaios",
-                            ),
-                            (
-                                "localizacao_ensaios",
-                                "Localização dos ensaios",
-                            ),
-                            (
-                                "resultados_ensaios",
-                                "Resultados",
-                            ),
-                            (
-                                "interpretacao_ensaios",
-                                "Interpretação",
-                            ),
-                            (
-                                "metodologia_ensaios",
-                                "Metodologia",
-                            ),
-                            (
-                                "normas_referencia_ensaios",
-                                "Normas de referência",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-            secoes.append(
-                (
-                    "Diagnóstico e terapia - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "diagnostico",
-                                "Diagnóstico",
-                            ),
-                            (
-                                "resumo_analise_estrutural",
-                                "Resumo da análise estrutural",
-                            ),
-                            (
-                                "terapia_recomendada",
-                                "Terapia recomendada",
-                            ),
-                            (
-                                "metodologia_recuperacao",
-                                "Metodologia de recuperação",
-                            ),
-                            (
-                                "reparos_recomendados",
-                                "Reparos recomendados",
-                            ),
-                            (
-                                "recuperacao_recomendada",
-                                "Recuperação recomendada",
-                            ),
-                            (
-                                "reforco_recomendado",
-                                "Reforço recomendado",
-                            ),
-                            (
-                                "conclusoes_recomendacoes",
-                                "Conclusões e recomendações",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-            secoes.append(
-                (
-                    "Relatórios complementares - inspeção especial",
-                    dict_objeto(
-                        registro,
-                        [
-                            (
-                                "necessidade_relatorios_complementares",
-                                "Necessidade de relatórios complementares",
-                            ),
-                            (
-                                "relatorios_complementares",
-                                "Relatórios complementares",
-                            ),
-                            (
-                                "justificativa_relatorios",
-                                "Justificativa",
-                            ),
-                        ],
-                    ),
-                )
-            )
-
-    elif tipo in [
-        "Extraordinária",
-        "Extraordinaria",
-    ]:
-
-        registro = buscar_dados_extraordinaria(
-            inspecao.id
-        )
-
-        if registro is not None:
-
             campos = []
 
             for coluna in registro.__table__.columns:
-
-                if coluna.name in [
-                    "id",
-                    "inspecao_id",
-                ]:
+                if coluna.name in ["id", "inspecao_id"]:
                     continue
 
                 titulo = (
@@ -889,21 +652,12 @@ def secoes_especificas_inspecao(inspecao):
                     .strip()
                     .capitalize()
                 )
-
-                campos.append(
-                    (
-                        coluna.name,
-                        titulo,
-                    )
-                )
+                campos.append((coluna.name, titulo))
 
             secoes.append(
                 (
                     "Dados da inspeção extraordinária",
-                    dict_objeto(
-                        registro,
-                        campos,
-                    ),
+                    dict_objeto(registro, campos),
                 )
             )
 
@@ -911,99 +665,86 @@ def secoes_especificas_inspecao(inspecao):
 
 
 # ============================================================
-# MONTAGEM DOS DADOS DO RELATÓRIO
+# MONTAGEM DOS DADOS
 # ============================================================
 
-def montar_relatorio_inspecao(
-    oae,
-    inspecao,
-):
+def montar_relatorio_inspecao(oae, inspecao):
+    componentes = mapa_componentes(oae.id)
+    fotografias = buscar_fotografias_inspecao(inspecao.id)
+    anomalias = buscar_anomalias_relacionadas_inspecao(oae.id, inspecao)
 
-    componentes = mapa_componentes(
-        oae.id
+    classificacao_geral = calcular_classificacao_consolidada(
+        oae.id,
+        inspecao.id,
     )
 
-    classificacoes = (
-        buscar_classificacoes_inspecao(
-            inspecao.id
-        )
-    )
-
-    classificacao_geral = (
-        consolidar_classificacao(
-            classificacoes
-        )
-    )
-
-    fotografias = (
-        buscar_fotografias_inspecao(
-            inspecao.id
-        )
-    )
-
-    anomalias = (
-        buscar_anomalias_relacionadas_inspecao(
+    if eh_inspecao_especial(inspecao):
+        classificacoes_componentes = buscar_classificacoes_modulo(
             oae.id,
-            inspecao,
+            inspecao.id,
         )
-    )
+        classificacao_direta = None
+    else:
+        classificacoes_componentes = []
+        classificacao_direta = buscar_classificacao_oae(
+            oae.id,
+            inspecao.id,
+        )
+
+    inspecoes_cronologicas = buscar_inspecoes_oae(oae.id)
+
+    historico_ate_campanha = [
+        item
+        for item in inspecoes_cronologicas
+        if (
+            item.data_inspecao < inspecao.data_inspecao
+            or (
+                item.data_inspecao == inspecao.data_inspecao
+                and item.id <= inspecao.id
+            )
+        )
+    ]
 
     return {
         "oae": oae,
         "inspecao": inspecao,
         "componentes": componentes,
-        "classificacoes": classificacoes,
-        "classificacao_geral": classificacao_geral,
         "fotografias": fotografias,
         "anomalias": anomalias,
-        "secoes_especificas":
-            secoes_especificas_inspecao(
-                inspecao
-            ),
+        "classificacao_geral": classificacao_geral,
+        "classificacao_direta": classificacao_direta,
+        "classificacoes_componentes": classificacoes_componentes,
+        "secoes_especificas": secoes_especificas_inspecao(inspecao),
+        "inspecoes_cronologicas": inspecoes_cronologicas,
+        "historico_ate_campanha": historico_ate_campanha,
     }
 
 
-def montar_relatorio_consolidado(
-    oae,
-):
-
-    inspecoes = buscar_inspecoes_oae(
-        oae.id
-    )
-
-    componentes = buscar_componentes_oae(
-        oae.id
-    )
-
-    anomalias = buscar_anomalias_oae(
-        oae.id
-    )
-
+def montar_relatorio_consolidado(oae):
+    inspecoes = buscar_inspecoes_oae(oae.id)
+    componentes = buscar_componentes_oae(oae.id)
+    anomalias = buscar_anomalias_oae(oae.id)
     campanhas = []
 
-    for inspecao in reversed(
-        inspecoes
-    ):
-
-        classificacoes = (
-            buscar_classificacoes_inspecao(
-                inspecao.id
-            )
+    for inspecao in inspecoes:
+        classificacao = calcular_classificacao_consolidada(
+            oae.id,
+            inspecao.id,
         )
 
         campanhas.append(
             {
                 "inspecao": inspecao,
-                "classificacao":
-                    consolidar_classificacao(
-                        classificacoes
-                    ),
-                "quantidade_fotos":
-                    len(
-                        buscar_fotografias_inspecao(
-                            inspecao.id
-                        )
-                    ),
+                "classificacao": classificacao,
+                "quantidade_fotos": len(
+                    buscar_fotografias_inspecao(inspecao.id)
+                ),
+                "quantidade_anomalias": len(
+                    buscar_anomalias_relacionadas_inspecao(
+                        oae.id,
+                        inspecao,
+                    )
+                ),
             }
         )
 
@@ -1017,83 +758,80 @@ def montar_relatorio_consolidado(
 
 
 # ============================================================
-# HTML - RELATÓRIO DE INSPEÇÃO
+# HTML
 # ============================================================
 
-def html_cabecalho(
-    titulo,
-):
-
+def html_cabecalho(titulo):
     return f"""
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
         <meta charset="utf-8">
         <title>{escape(titulo)}</title>
-
         <style>
             body {{
                 font-family: Arial, Helvetica, sans-serif;
                 margin: 38px;
-                color: #222;
+                color: #24313D;
                 line-height: 1.45;
             }}
-
-            h1 {{
-                font-size: 25px;
-                margin-bottom: 3px;
+            .topo {{
+                background: {COR_AZUL};
+                color: white;
+                padding: 22px;
+                margin-bottom: 18px;
             }}
-
+            h1 {{ margin: 0; font-size: 25px; }}
             h2 {{
-                margin-top: 30px;
-                border-bottom: 1px solid #aaa;
-                padding-bottom: 5px;
+                margin-top: 28px;
+                background: {COR_AZUL_CLARO};
+                padding: 9px 12px;
+                border-left: 5px solid {COR_AZUL_2};
+                font-size: 18px;
             }}
-
-            h3 {{
-                margin-top: 22px;
-            }}
-
             table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin: 12px 0 22px 0;
             }}
-
             th, td {{
-                border: 1px solid #bbb;
+                border: 1px solid #CCD5DF;
                 padding: 7px;
                 text-align: left;
                 vertical-align: top;
             }}
-
-            th {{
-                background: #f2f2f2;
-            }}
-
+            th {{ background: #F4F6F8; }}
             .aviso {{
                 padding: 12px;
-                border: 1px solid #aaa;
-                background: #fafafa;
+                border: 1px solid #E7C577;
+                background: #FFF8E4;
                 margin: 18px 0;
             }}
-
-            .rodape {{
-                margin-top: 40px;
-                font-size: 11px;
-                color: #666;
+            .cards {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+            .card {{
+                border: 1px solid #CCD5DF;
+                border-top: 4px solid {COR_AZUL_2};
+                padding: 10px;
+                min-width: 150px;
+                flex: 1;
             }}
+            .card b {{ display: block; color: #52606D; font-size: 12px; }}
+            .card span {{ font-size: 20px; font-weight: bold; }}
+            .foto {{
+                display: inline-block;
+                width: 47%;
+                vertical-align: top;
+                margin: 1%;
+            }}
+            .foto img {{ max-width: 100%; max-height: 330px; }}
+            .rodape {{ margin-top: 40px; font-size: 11px; color: #666; }}
         </style>
     </head>
     <body>
     """
 
 
-def html_linha(
-    titulo,
-    valor,
-):
-
+def html_linha(titulo, valor):
     return (
         "<tr>"
         f"<th>{escape(texto(titulo))}</th>"
@@ -1102,846 +840,398 @@ def html_linha(
     )
 
 
-def gerar_html_inspecao(
-    dados,
-):
-
+def gerar_html_inspecao(dados):
     oae = dados["oae"]
     inspecao = dados["inspecao"]
+    classificacao = dados["classificacao_geral"]
     componentes = dados["componentes"]
 
     partes = [
-        html_cabecalho(
-            "Relatório de inspeção"
-        ),
-        "<h1>Relatório de inspeção de OAE</h1>",
+        html_cabecalho("Relatório técnico de inspeção de OAE"),
+        "<div class='topo'>",
+        "<h1>RELATÓRIO TÉCNICO DE INSPEÇÃO DE OAE</h1>",
         (
-            "<div class='aviso'>"
-            "Documento gerado a partir dos registros do "
-            "Gêmeo Digital. O diagnóstico, a classificação "
-            "e as decisões técnicas devem ser validados "
-            "pelo profissional responsável."
-            "</div>"
+            f"<div>{escape(texto(inspecao.tipo_inspecao))} | "
+            f"{escape(data_br(inspecao.data_inspecao))} | "
+            f"{escape(nome_oae_exibicao(oae))}</div>"
         ),
+        "</div>",
+        (
+            "<div class='aviso'><b>Nota técnica.</b> "
+            "Este documento consolida informações registradas no Gêmeo Digital. "
+            "A validação do diagnóstico, da classificação e das decisões de intervenção "
+            "permanece sob responsabilidade do profissional competente.</div>"
+        ),
+        "<div class='cards'>",
+        f"<div class='card'><b>Código da OAE</b><span>{escape(texto(oae.codigo))}</span></div>",
+        f"<div class='card'><b>Anomalias</b><span>{len(dados['anomalias'])}</span></div>",
+        f"<div class='card'><b>Fotografias</b><span>{len(dados['fotografias'])}</span></div>",
+        f"<div class='card'><b>Estrutural</b><span>{escape(classificacao_com_condicao(classificacao['estrutural']))}</span></div>",
+        f"<div class='card'><b>Funcional</b><span>{escape(classificacao_com_condicao(classificacao['funcional']))}</span></div>",
+        f"<div class='card'><b>Durabilidade</b><span>{escape(classificacao_com_condicao(classificacao['durabilidade']))}</span></div>",
+        "</div>",
         "<h2>1. Identificação da OAE</h2>",
         "<table>",
-        html_linha(
-            "Nome",
-            oae.nome,
-        ),
-        html_linha(
-            "Código",
-            oae.codigo,
-        ),
-        html_linha(
-            "Rodovia",
-            oae.rodovia,
-        ),
+        html_linha("Nome", oae.nome),
+        html_linha("Código", oae.codigo),
+        html_linha("Rodovia", oae.rodovia),
         html_linha(
             "Município / UF",
-            (
-                f"{texto(oae.municipio, '')}"
-                f"{' / ' if oae.municipio and oae.uf else ''}"
-                f"{texto(oae.uf, '')}"
-            ),
+            f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
         ),
-        html_linha(
-            "Tipo de estrutura",
-            oae.tipo_estrutura,
-        ),
-        html_linha(
-            "Número de vãos",
-            oae.numero_vaos,
-        ),
-        html_linha(
-            "Comprimento total (m)",
-            numero_br(
-                oae.comprimento_total
-            ),
-        ),
-        html_linha(
-            "Largura (m)",
-            numero_br(
-                oae.largura
-            ),
-        ),
+        html_linha("Tipo de estrutura", oae.tipo_estrutura),
+        html_linha("Ano de construção", oae.ano_construcao),
+        html_linha("Número de vãos", oae.numero_vaos),
+        html_linha("Comprimento total", f"{numero_br(oae.comprimento_total)} m"),
+        html_linha("Largura total", f"{numero_br(oae.largura)} m"),
+        html_linha("Protensão", oae.tipo_protensao),
         "</table>",
-        "<h2>2. Identificação da inspeção</h2>",
+        "<h2>2. Identificação e objetivo da inspeção</h2>",
         "<table>",
-        html_linha(
-            "Tipo",
-            inspecao.tipo_inspecao,
-        ),
-        html_linha(
-            "Data",
-            data_br(
-                inspecao.data_inspecao
-            ),
-        ),
-        html_linha(
-            "Responsável",
-            inspecao.responsavel,
-        ),
-        html_linha(
-            "Registro profissional",
-            inspecao.registro_profissional,
-        ),
-        html_linha(
-            "Observações",
-            inspecao.observacoes,
-        ),
+        html_linha("Modalidade", inspecao.tipo_inspecao),
+        html_linha("Data", data_br(inspecao.data_inspecao)),
+        html_linha("Responsável", inspecao.responsavel),
+        html_linha("Registro profissional", inspecao.registro_profissional),
+        html_linha("Objetivo / observações", inspecao.observacoes),
         "</table>",
+        "<h2>3. Histórico das inspeções</h2>",
+        "<table><tr><th>Inspeção</th><th>Modalidade</th><th>Data</th></tr>",
     ]
 
-    for titulo_secao, campos in dados[
-        "secoes_especificas"
-    ]:
-
+    for numero, item in enumerate(dados["historico_ate_campanha"], start=1):
         partes.append(
-            f"<h2>{escape(titulo_secao)}</h2>"
+            "<tr>"
+            f"<td>{numero:02d}</td>"
+            f"<td>{escape(texto(item.tipo_inspecao))}</td>"
+            f"<td>{escape(data_br(item.data_inspecao))}</td>"
+            "</tr>"
         )
 
-        partes.append(
-            "<table>"
-        )
+    partes.append("</table>")
 
-        for titulo, valor in campos.items():
+    numero_secao = 4
 
-            partes.append(
-                html_linha(
-                    titulo,
-                    valor,
-                )
-            )
+    for titulo, campos in dados["secoes_especificas"]:
+        partes.append(f"<h2>{numero_secao}. {escape(titulo)}</h2><table>")
 
-        partes.append(
-            "</table>"
-        )
+        for chave, valor in campos.items():
+            partes.append(html_linha(chave, valor))
 
-    partes.extend(
-        [
-            "<h2>3. Anomalias relacionadas à campanha</h2>",
-        ]
-    )
+        partes.append("</table>")
+        numero_secao += 1
 
-    if len(
-        dados["anomalias"]
-    ) == 0:
+    partes.append(f"<h2>{numero_secao}. Registro e evolução das anomalias</h2>")
 
-        partes.append(
-            "<p>Nenhuma anomalia relacionada a esta "
-            "campanha foi localizada no banco de dados.</p>"
-        )
-
+    if len(dados["anomalias"]) == 0:
+        partes.append("<p>Nenhuma anomalia relacionada à campanha.</p>")
     else:
-
         partes.append(
-            """
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Componente</th>
-                    <th>Anomalia</th>
-                    <th>Localização</th>
-                    <th>Situação nesta campanha</th>
-                    <th>Abertura (mm)</th>
-                    <th>Extensão (cm)</th>
-                </tr>
-            """
+            "<table><tr><th>Ref.</th><th>Componente</th><th>Anomalia</th>"
+            "<th>Localização</th><th>Situação na campanha</th></tr>"
         )
 
-        for anomalia, observacao in dados[
-            "anomalias"
-        ]:
-
-            componente = componentes.get(
-                anomalia.componente_id
+        for indice, (anomalia, observacao) in enumerate(dados["anomalias"], start=1):
+            componente = componentes.get(anomalia.componente_id)
+            situacao = (
+                observacao.situacao_observada
+                if observacao is not None
+                else "Identificada nesta inspeção"
             )
 
             partes.append(
                 "<tr>"
-                f"<td>{anomalia.id}</td>"
-                f"<td>{escape(texto(componente.nome if componente else None))}</td>"
+                f"<td>AN-{indice:02d}</td>"
+                f"<td>{escape(limpar_nome_componente(componente.nome if componente else None))}</td>"
                 f"<td>{escape(texto(anomalia.tipo_anomalia))}</td>"
                 f"<td>{escape(texto(anomalia.localizacao_referencia))}</td>"
-                f"<td>{escape(texto(observacao.situacao_observada if observacao else 'Registrada nesta inspeção'))}</td>"
-                f"<td>{escape(numero_br(observacao.abertura_fissura_mm) if observacao else 'Não informado')}</td>"
-                f"<td>{escape(numero_br(observacao.extensao_anomalia_cm) if observacao else 'Não informado')}</td>"
+                f"<td>{escape(texto(situacao))}</td>"
                 "</tr>"
             )
 
-        partes.append(
-            "</table>"
-        )
+        partes.append("</table>")
 
+    numero_secao += 1
+    partes.append(f"<h2>{numero_secao}. Classificação da condição da OAE</h2>")
     partes.append(
-        "<h2>4. Classificação</h2>"
+        "<table>"
+        + html_linha("Estrutural", classificacao_com_condicao(classificacao["estrutural"]))
+        + html_linha("Funcional", classificacao_com_condicao(classificacao["funcional"]))
+        + html_linha("Durabilidade", classificacao_com_condicao(classificacao["durabilidade"]))
+        + "</table>"
     )
 
-    classificacao = dados[
-        "classificacao_geral"
-    ]
-
-    partes.extend(
-        [
-            "<table>",
-            html_linha(
-                "Estrutural",
-                classificacao["estrutural"],
-            ),
-            html_linha(
-                "Funcional",
-                (
-                    classificacao["funcional"]
-                    if classificacao["funcional"] is not None
-                    else "Não se aplica / não informado"
-                ),
-            ),
-            html_linha(
-                "Durabilidade",
-                classificacao["durabilidade"],
-            ),
-            "</table>",
-        ]
-    )
-
-    if len(
-        dados["classificacoes"]
-    ) > 0:
-
+    if eh_inspecao_especial(inspecao) and dados["classificacoes_componentes"]:
+        partes.append("<h3>Classificação detalhada por componente</h3>")
         partes.append(
-            """
-            <table>
-                <tr>
-                    <th>Componente</th>
-                    <th>Estrutural</th>
-                    <th>Funcional</th>
-                    <th>Durabilidade</th>
-                </tr>
-            """
+            "<table><tr><th>Componente</th><th>Estrutural</th>"
+            "<th>Funcional</th><th>Durabilidade</th></tr>"
         )
 
-        for classificacao_item in dados[
-            "classificacoes"
-        ]:
-
-            componente = componentes.get(
-                classificacao_item.componente_id
-            )
-
+        for item in dados["classificacoes_componentes"]:
+            componente = componentes.get(item.componente_id)
             partes.append(
                 "<tr>"
-                f"<td>{escape(texto(componente.nome if componente else classificacao_item.componente_id))}</td>"
-                f"<td>{escape(texto(classificacao_item.nota_estrutural))}</td>"
-                f"<td>{escape(texto(classificacao_item.nota_funcional, 'NA'))}</td>"
-                f"<td>{escape(texto(classificacao_item.nota_durabilidade))}</td>"
+                f"<td>{escape(limpar_nome_componente(componente.nome if componente else None))}</td>"
+                f"<td>{escape(texto(item.nota_estrutural))}</td>"
+                f"<td>{escape(texto(item.nota_funcional, 'NA'))}</td>"
+                f"<td>{escape(texto(item.nota_durabilidade))}</td>"
                 "</tr>"
             )
+        partes.append("</table>")
 
-        partes.append(
-            "</table>"
-        )
+    numero_secao += 1
+    partes.append(f"<h2>{numero_secao}. Levantamento fotográfico</h2>")
 
-    partes.append(
-        "<h2>5. Registro fotográfico</h2>"
-    )
-
-    if len(
-        dados["fotografias"]
-    ) == 0:
-
-        partes.append(
-            "<p>Nenhum registro fotográfico localizado "
-            "para esta campanha.</p>"
-        )
-
+    if len(dados["fotografias"]) == 0:
+        partes.append("<p>Nenhuma fotografia vinculada à inspeção.</p>")
     else:
-
         partes.append(
-            """
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Data</th>
-                    <th>Identificação</th>
-                    <th>Tipo</th>
-                    <th>Arquivo</th>
-                    <th>Observações</th>
-                </tr>
-            """
+            "<p>As imagens permanecem vinculadas à campanha e aos respectivos "
+            "componentes/anomalias conforme os registros do sistema.</p>"
+        )
+        partes.append(
+            "<table><tr><th>Foto</th><th>Data</th><th>Identificação</th>"
+            "<th>Tipo</th><th>Observações</th></tr>"
         )
 
-        for foto in dados[
-            "fotografias"
-        ]:
-
+        for indice, foto in enumerate(dados["fotografias"], start=1):
             partes.append(
                 "<tr>"
-                f"<td>{foto.id}</td>"
+                f"<td>Foto {indice:02d}</td>"
                 f"<td>{escape(data_br(foto.data_foto))}</td>"
                 f"<td>{escape(texto(foto.identificacao))}</td>"
                 f"<td>{escape(texto(foto.tipo_registro))}</td>"
-                f"<td>{escape(texto(foto.nome_arquivo))}</td>"
                 f"<td>{escape(texto(foto.observacoes))}</td>"
                 "</tr>"
             )
 
-        partes.append(
-            "</table>"
-        )
+        partes.append("</table>")
 
     partes.extend(
         [
             "<div class='rodape'>",
             (
-                "Gerado pelo Gêmeo Digital para Inspeção "
-                f"de Pontes em {datetime.now().strftime('%d/%m/%Y %H:%M')}."
+                "Relatório gerado em "
+                f"{datetime.now().strftime('%d/%m/%Y às %H:%M')} "
+                "a partir dos dados armazenados no sistema."
             ),
             "</div>",
             "</body></html>",
         ]
     )
 
-    return "".join(
-        partes
-    )
+    return "".join(partes)
 
 
-# ============================================================
-# HTML - RELATÓRIO CONSOLIDADO DA OAE
-# ============================================================
-
-def gerar_html_consolidado(
-    dados,
-):
-
+def gerar_html_consolidado(dados):
     oae = dados["oae"]
 
     partes = [
-        html_cabecalho(
-            "Relatório consolidado da OAE"
-        ),
-        "<h1>Relatório consolidado da OAE</h1>",
+        html_cabecalho("Relatório consolidado da OAE"),
+        "<div class='topo'><h1>RELATÓRIO CONSOLIDADO DA OAE</h1>",
+        f"<div>{escape(nome_oae_exibicao(oae))}</div></div>",
         (
-            "<div class='aviso'>"
-            "Síntese histórica produzida a partir dos dados "
-            "registrados no sistema. A interpretação técnica "
-            "deve ser realizada pelo profissional responsável."
-            "</div>"
+            "<div class='aviso'>Síntese histórica produzida a partir dos dados "
+            "registrados no sistema. A interpretação e validação técnica permanecem "
+            "sob responsabilidade do profissional.</div>"
         ),
-        "<h2>1. Identificação</h2>",
-        "<table>",
-        html_linha(
-            "Nome",
-            oae.nome,
-        ),
-        html_linha(
-            "Código",
-            oae.codigo,
-        ),
-        html_linha(
-            "Rodovia",
-            oae.rodovia,
-        ),
+        "<h2>1. Identificação da OAE</h2><table>",
+        html_linha("Nome", oae.nome),
+        html_linha("Código", oae.codigo),
+        html_linha("Rodovia", oae.rodovia),
         html_linha(
             "Município / UF",
-            (
-                f"{texto(oae.municipio, '')}"
-                f"{' / ' if oae.municipio and oae.uf else ''}"
-                f"{texto(oae.uf, '')}"
-            ),
+            f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
         ),
-        html_linha(
-            "Tipo de estrutura",
-            oae.tipo_estrutura,
-        ),
-        html_linha(
-            "Ano de construção",
-            oae.ano_construcao,
-        ),
-        html_linha(
-            "Número de vãos",
-            oae.numero_vaos,
-        ),
+        html_linha("Tipo de estrutura", oae.tipo_estrutura),
+        html_linha("Ano de construção", oae.ano_construcao),
         "</table>",
-        "<h2>2. Componentes cadastrados</h2>",
+        "<h2>2. Histórico de inspeções e classificações</h2>",
+        (
+            "<table><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>Estrutural</th>"
+            "<th>Funcional</th><th>Durabilidade</th><th>Anomalias</th><th>Fotos</th></tr>"
+        ),
     ]
 
-    if len(
-        dados["componentes"]
-    ) == 0:
+    for indice, campanha in enumerate(dados["campanhas"], start=1):
+        inspecao = campanha["inspecao"]
+        classificacao = campanha["classificacao"]
 
         partes.append(
-            "<p>Nenhum componente cadastrado.</p>"
+            "<tr>"
+            f"<td>{indice:02d}</td>"
+            f"<td>{escape(data_br(inspecao.data_inspecao))}</td>"
+            f"<td>{escape(texto(inspecao.tipo_inspecao))}</td>"
+            f"<td>{escape(classificacao_com_condicao(classificacao['estrutural']))}</td>"
+            f"<td>{escape(classificacao_com_condicao(classificacao['funcional']))}</td>"
+            f"<td>{escape(classificacao_com_condicao(classificacao['durabilidade']))}</td>"
+            f"<td>{campanha['quantidade_anomalias']}</td>"
+            f"<td>{campanha['quantidade_fotos']}</td>"
+            "</tr>"
         )
 
+    partes.append("</table>")
+    partes.append("<h2>3. Inventário atual de anomalias</h2>")
+
+    if not dados["anomalias"]:
+        partes.append("<p>Nenhuma anomalia permanente cadastrada.</p>")
     else:
-
+        componentes = {item.id: item for item in dados["componentes"]}
         partes.append(
-            """
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Categoria</th>
-                    <th>Componente</th>
-                    <th>Classificação do elemento</th>
-                </tr>
-            """
+            "<table><tr><th>Ref.</th><th>Componente</th><th>Tipo</th>"
+            "<th>Localização</th><th>Status</th></tr>"
         )
 
-        for componente in dados[
-            "componentes"
-        ]:
-
+        for indice, anomalia in enumerate(dados["anomalias"], start=1):
+            componente = componentes.get(anomalia.componente_id)
             partes.append(
                 "<tr>"
-                f"<td>{componente.id}</td>"
-                f"<td>{escape(texto(componente.categoria))}</td>"
-                f"<td>{escape(texto(componente.nome))}</td>"
-                f"<td>{escape(texto(componente.classificacao_elemento))}</td>"
-                "</tr>"
-            )
-
-        partes.append(
-            "</table>"
-        )
-
-    partes.append(
-        "<h2>3. Histórico das inspeções e classificações</h2>"
-    )
-
-    if len(
-        dados["campanhas"]
-    ) == 0:
-
-        partes.append(
-            "<p>Nenhuma inspeção cadastrada.</p>"
-        )
-
-    else:
-
-        partes.append(
-            """
-            <table>
-                <tr>
-                    <th>Data</th>
-                    <th>Tipo</th>
-                    <th>Estrutural</th>
-                    <th>Funcional</th>
-                    <th>Durabilidade</th>
-                    <th>Fotos</th>
-                </tr>
-            """
-        )
-
-        for campanha in dados[
-            "campanhas"
-        ]:
-
-            inspecao = campanha[
-                "inspecao"
-            ]
-
-            classificacao = campanha[
-                "classificacao"
-            ]
-
-            partes.append(
-                "<tr>"
-                f"<td>{escape(data_br(inspecao.data_inspecao))}</td>"
-                f"<td>{escape(texto(inspecao.tipo_inspecao))}</td>"
-                f"<td>{escape(texto(classificacao['estrutural']))}</td>"
-                f"<td>{escape(texto(classificacao['funcional'], 'NA'))}</td>"
-                f"<td>{escape(texto(classificacao['durabilidade']))}</td>"
-                f"<td>{campanha['quantidade_fotos']}</td>"
-                "</tr>"
-            )
-
-        partes.append(
-            "</table>"
-        )
-
-    partes.append(
-        "<h2>4. Inventário das anomalias</h2>"
-    )
-
-    if len(
-        dados["anomalias"]
-    ) == 0:
-
-        partes.append(
-            "<p>Nenhuma anomalia permanente cadastrada.</p>"
-        )
-
-    else:
-
-        componentes = {
-            item.id: item
-            for item in dados[
-                "componentes"
-            ]
-        }
-
-        partes.append(
-            """
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Componente</th>
-                    <th>Tipo</th>
-                    <th>Localização</th>
-                    <th>Status</th>
-                </tr>
-            """
-        )
-
-        for anomalia in dados[
-            "anomalias"
-        ]:
-
-            componente = componentes.get(
-                anomalia.componente_id
-            )
-
-            partes.append(
-                "<tr>"
-                f"<td>{anomalia.id}</td>"
-                f"<td>{escape(texto(componente.nome if componente else None))}</td>"
+                f"<td>AN-{indice:02d}</td>"
+                f"<td>{escape(limpar_nome_componente(componente.nome if componente else None))}</td>"
                 f"<td>{escape(texto(anomalia.tipo_anomalia))}</td>"
                 f"<td>{escape(texto(anomalia.localizacao_referencia))}</td>"
                 f"<td>{'Ativa' if anomalia.ativa else 'Encerrada'}</td>"
                 "</tr>"
             )
 
-        partes.append(
-            "</table>"
-        )
+        partes.append("</table>")
 
     partes.extend(
         [
             "<div class='rodape'>",
-            (
-                "Gerado pelo Gêmeo Digital para Inspeção "
-                f"de Pontes em {datetime.now().strftime('%d/%m/%Y %H:%M')}."
-            ),
-            "</div>",
-            "</body></html>",
+            f"Relatório consolidado gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.",
+            "</div></body></html>",
         ]
     )
 
-    return "".join(
-        partes
-    )
-
+    return "".join(partes)
 
 
 # ============================================================
-# IDENTIDADE VISUAL DOS RELATÓRIOS
+# AUXILIARES PDF
 # ============================================================
 
-COR_PRIMARIA = colors.HexColor("#17365D") if REPORTLAB_DISPONIVEL else None
-COR_SECUNDARIA = colors.HexColor("#2F75B5") if REPORTLAB_DISPONIVEL else None
-COR_DESTAQUE = colors.HexColor("#E67E22") if REPORTLAB_DISPONIVEL else None
-COR_FUNDO_CLARO = colors.HexColor("#F5F8FC") if REPORTLAB_DISPONIVEL else None
-COR_LINHA = colors.HexColor("#D9E2F3") if REPORTLAB_DISPONIVEL else None
-COR_TEXTO = colors.HexColor("#263238") if REPORTLAB_DISPONIVEL else None
-COR_TEXTO_SUAVE = colors.HexColor("#607D8B") if REPORTLAB_DISPONIVEL else None
-
-COR_NOTA_5 = colors.HexColor("#1B5E20") if REPORTLAB_DISPONIVEL else None
-COR_NOTA_4 = colors.HexColor("#43A047") if REPORTLAB_DISPONIVEL else None
-COR_NOTA_3 = colors.HexColor("#F9A825") if REPORTLAB_DISPONIVEL else None
-COR_NOTA_2 = colors.HexColor("#EF6C00") if REPORTLAB_DISPONIVEL else None
-COR_NOTA_1 = colors.HexColor("#C62828") if REPORTLAB_DISPONIVEL else None
-COR_NOTA_NA = colors.HexColor("#78909C") if REPORTLAB_DISPONIVEL else None
+def _cor(hexadecimal):
+    return colors.HexColor(hexadecimal)
 
 
-def cor_nota(valor):
-
-    try:
-        nota = int(valor)
-    except Exception:
-        return COR_NOTA_NA
-
-    mapa = {
-        5: COR_NOTA_5,
-        4: COR_NOTA_4,
-        3: COR_NOTA_3,
-        2: COR_NOTA_2,
-        1: COR_NOTA_1,
-    }
-
-    return mapa.get(
-        nota,
-        COR_NOTA_NA,
-    )
-
-
-def estilos_pdf_profissional():
-
-    estilos_base = getSampleStyleSheet()
+def _estilos_pdf():
+    base = getSampleStyleSheet()
 
     return {
         "titulo": ParagraphStyle(
-            "RelTituloPrincipal",
-            parent=estilos_base["Title"],
+            "TituloTecnico",
+            parent=base["Title"],
             fontName="Helvetica-Bold",
-            fontSize=19,
-            leading=23,
-            textColor=colors.white,
+            textColor=_cor(COR_AZUL),
+            fontSize=18,
+            leading=21,
             alignment=TA_LEFT,
-            spaceAfter=0,
-        ),
-
-        "subtitulo": ParagraphStyle(
-            "RelSubtitulo",
-            parent=estilos_base["BodyText"],
-            fontName="Helvetica",
-            fontSize=8.5,
-            leading=11,
-            textColor=colors.HexColor("#DCE6F1"),
-            alignment=TA_LEFT,
-        ),
-
-        "secao": ParagraphStyle(
-            "RelSecao",
-            parent=estilos_base["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=12,
-            leading=15,
-            textColor=COR_PRIMARIA,
-            spaceBefore=9,
-            spaceAfter=6,
-        ),
-
-        "subsecao": ParagraphStyle(
-            "RelSubsecao",
-            parent=estilos_base["Heading3"],
-            fontName="Helvetica-Bold",
-            fontSize=9.5,
-            leading=12,
-            textColor=COR_SECUNDARIA,
-            spaceBefore=7,
             spaceAfter=4,
         ),
-
+        "subtitulo": ParagraphStyle(
+            "SubtituloTecnico",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            textColor=_cor("#5E6C78"),
+            fontSize=9,
+            leading=12,
+            spaceAfter=8,
+        ),
+        "secao": ParagraphStyle(
+            "SecaoTecnica",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            textColor=_cor(COR_AZUL),
+            fontSize=12.2,
+            leading=15,
+            spaceBefore=8,
+            spaceAfter=6,
+        ),
         "normal": ParagraphStyle(
-            "RelNormal",
-            parent=estilos_base["BodyText"],
+            "TextoTecnico",
+            parent=base["BodyText"],
             fontName="Helvetica",
+            textColor=_cor(COR_TEXTO),
             fontSize=8.2,
-            leading=11,
-            textColor=COR_TEXTO,
+            leading=10.5,
         ),
-
-        "normal_pequeno": ParagraphStyle(
-            "RelNormalPequeno",
-            parent=estilos_base["BodyText"],
+        "pequeno": ParagraphStyle(
+            "TextoPequeno",
+            parent=base["BodyText"],
             fontName="Helvetica",
-            fontSize=7.2,
-            leading=9,
-            textColor=COR_TEXTO,
-        ),
-
-        "rotulo": ParagraphStyle(
-            "RelRotulo",
-            parent=estilos_base["BodyText"],
-            fontName="Helvetica-Bold",
+            textColor=_cor("#5E6C78"),
             fontSize=7.1,
-            leading=8.5,
-            textColor=COR_TEXTO_SUAVE,
-            uppercase=True,
+            leading=9,
         ),
-
-        "valor_card": ParagraphStyle(
-            "RelValorCard",
-            parent=estilos_base["BodyText"],
+        "legenda": ParagraphStyle(
+            "LegendaFoto",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            textColor=_cor(COR_TEXTO),
+            fontSize=7.4,
+            leading=9.2,
+            spaceAfter=2,
+        ),
+        "legenda_bold": ParagraphStyle(
+            "LegendaFotoBold",
+            parent=base["BodyText"],
             fontName="Helvetica-Bold",
-            fontSize=10.5,
-            leading=13,
-            textColor=COR_PRIMARIA,
+            textColor=_cor(COR_AZUL),
+            fontSize=7.7,
+            leading=9.5,
         ),
-
-        "aviso": ParagraphStyle(
-            "RelAviso",
-            parent=estilos_base["BodyText"],
-            fontName="Helvetica",
-            fontSize=7.5,
-            leading=10,
-            textColor=colors.HexColor("#5D4037"),
-        ),
-
-        "rodape": ParagraphStyle(
-            "RelRodape",
-            parent=estilos_base["BodyText"],
-            fontName="Helvetica",
-            fontSize=6.5,
+        "card_titulo": ParagraphStyle(
+            "CardTitulo",
+            parent=base["BodyText"],
+            fontName="Helvetica-Bold",
+            textColor=_cor("#667481"),
+            fontSize=6.8,
             leading=8,
-            textColor=COR_TEXTO_SUAVE,
+        ),
+        "card_valor": ParagraphStyle(
+            "CardValor",
+            parent=base["BodyText"],
+            fontName="Helvetica-Bold",
+            textColor=_cor(COR_AZUL),
+            fontSize=10.2,
+            leading=12,
         ),
     }
 
 
-def _cabecalho_relatorio_pdf(
-    titulo,
-    subtitulo,
-    estilos,
-):
-
-    conteudo = Table(
-        [
-            [
-                Paragraph(
-                    titulo,
-                    estilos["titulo"],
-                ),
-            ],
-            [
-                Paragraph(
-                    subtitulo,
-                    estilos["subtitulo"],
-                ),
-            ],
-        ],
-        colWidths=[175 * mm],
-    )
-
-    conteudo.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    COR_PRIMARIA,
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    9,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    9,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, 0),
-                    11,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, 0),
-                    2,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 1),
-                    (-1, 1),
-                    0,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 1),
-                    (-1, 1),
-                    10,
-                ),
-            ]
-        )
-    )
-
-    return conteudo
+def _p(valor, estilo, padrao="Não informado"):
+    conteudo = escape(texto(valor, padrao)).replace("\n", "<br/>")
+    return Paragraph(conteudo, estilo)
 
 
-def _barra_secao_pdf(
-    numero,
-    titulo,
-    estilos,
-):
-
+def _secao_pdf(numero, titulo, estilos):
     tabela = Table(
-        [
-            [
-                Paragraph(
-                    str(numero),
-                    ParagraphStyle(
-                        f"RelNumeroSecao{numero}",
-                        parent=estilos["normal"],
-                        fontName="Helvetica-Bold",
-                        fontSize=9,
-                        leading=11,
-                        textColor=colors.white,
-                        alignment=TA_CENTER,
-                    ),
-                ),
-                Paragraph(
-                    escape(titulo),
-                    estilos["secao"],
-                ),
-            ]
-        ],
-        colWidths=[
-            10 * mm,
-            165 * mm,
-        ],
+        [[
+            Paragraph(
+                f"<b>{numero}</b>",
+                estilos["normal"],
+            ),
+            Paragraph(
+                f"<b>{escape(titulo)}</b>",
+                estilos["secao"],
+            ),
+        ]],
+        colWidths=[10 * mm, 165 * mm],
     )
 
     tabela.setStyle(
         TableStyle(
             [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, 0),
-                    COR_SECUNDARIA,
-                ),
-                (
-                    "BACKGROUND",
-                    (1, 0),
-                    (1, 0),
-                    COR_FUNDO_CLARO,
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    COR_LINHA,
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
+                ("BACKGROUND", (0, 0), (0, 0), _cor(COR_AZUL_2)),
+                ("TEXTCOLOR", (0, 0), (0, 0), colors.white),
+                ("BACKGROUND", (1, 0), (1, 0), _cor(COR_AZUL_CLARO)),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("BOX", (0, 0), (-1, -1), 0.4, _cor(COR_LINHA)),
             ]
         )
     )
@@ -1949,216 +1239,32 @@ def _barra_secao_pdf(
     return tabela
 
 
-def _card_pdf(
-    rotulo,
-    valor,
-    estilos,
-    cor_borda=None,
-):
-
-    if cor_borda is None:
-        cor_borda = COR_SECUNDARIA
-
-    tabela = Table(
-        [
-            [
-                Paragraph(
-                    escape(texto(rotulo)),
-                    estilos["rotulo"],
-                )
-            ],
-            [
-                Paragraph(
-                    escape(texto(valor)),
-                    estilos["valor_card"],
-                )
-            ],
-        ],
-        colWidths=[41 * mm],
-    )
-
-    tabela.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.white,
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.7,
-                    COR_LINHA,
-                ),
-                (
-                    "LINEBEFORE",
-                    (0, 0),
-                    (0, -1),
-                    3,
-                    cor_borda,
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    7,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, 0),
-                    6,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, 0),
-                    1,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 1),
-                    (-1, 1),
-                    0,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 1),
-                    (-1, 1),
-                    7,
-                ),
-            ]
-        )
-    )
-
-    return tabela
-
-
-def _linha_cards_pdf(
-    cards,
-):
-
-    tabela = Table(
-        [cards],
-        colWidths=[
-            43.75 * mm
-            for _ in cards
-        ],
-    )
-
-    tabela.setStyle(
-        TableStyle(
-            [
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    1.5,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    1.5,
-                ),
-            ]
-        )
-    )
-
-    return tabela
-
-
-def _tabela_info_profissional_pdf(
-    dados,
-    estilos,
-):
-
+def _tabela_chave_valor_pdf(dados, estilos):
     linhas = []
 
     for chave, valor in dados:
-
         linhas.append(
             [
-                Paragraph(
-                    escape(texto(chave)),
-                    estilos["rotulo"],
-                ),
-                _paragrafo_pdf(
-                    valor,
-                    estilos["normal"],
-                ),
+                _p(chave, estilos["pequeno"]),
+                _p(valor, estilos["normal"]),
             ]
         )
 
     tabela = Table(
         linhas,
-        colWidths=[
-            48 * mm,
-            127 * mm,
-        ],
+        colWidths=[48 * mm, 127 * mm],
     )
 
     tabela.setStyle(
         TableStyle(
             [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, -1),
-                    COR_FUNDO_CLARO,
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.35,
-                    COR_LINHA,
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
+                ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                ("BACKGROUND", (0, 0), (0, -1), _cor(COR_CINZA)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
         )
     )
@@ -2166,79 +1272,31 @@ def _tabela_info_profissional_pdf(
     return tabela
 
 
-def _classificacao_cards_pdf(
-    classificacao,
-    estilos,
-):
+def _card_pdf(titulo, valor, estilos, destaque=False):
+    cor_barra = COR_LARANJA if destaque else COR_AZUL_2
 
-    cards = []
-
-    for rotulo, chave in [
-        (
-            "Estrutural",
-            "estrutural",
-        ),
-        (
-            "Funcional",
-            "funcional",
-        ),
-        (
-            "Durabilidade",
-            "durabilidade",
-        ),
-    ]:
-
-        valor = classificacao.get(
-            chave
-        )
-
-        exibicao = (
-            valor
-            if valor is not None
-            else "NA"
-        )
-
-        cards.append(
-            _card_pdf(
-                rotulo,
-                exibicao,
-                estilos,
-                cor_borda=cor_nota(
-                    valor
-                ),
+    tabela = Table(
+        [[
+            Paragraph(
+                f"<b>{escape(texto(titulo))}</b><br/>"
+                f"<font size='10'><b>{escape(texto(valor))}</b></font>",
+                estilos["card_titulo"],
             )
-        )
-
-    tabela = Table(
-        [cards],
-        colWidths=[
-            58.33 * mm,
-            58.33 * mm,
-            58.33 * mm,
-        ],
+        ]],
+        colWidths=[27.8 * mm],
+        rowHeights=[18 * mm],
     )
 
     tabela.setStyle(
         TableStyle(
             [
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    2,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    2,
-                ),
+                ("BOX", (0, 0), (-1, -1), 0.4, _cor(COR_LINHA)),
+                ("LINEBEFORE", (0, 0), (0, -1), 2.4, _cor(cor_barra)),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ]
         )
     )
@@ -2246,1231 +1304,604 @@ def _classificacao_cards_pdf(
     return tabela
 
 
-def _aviso_tecnico_pdf(
-    estilos,
-):
-
-    tabela = Table(
-        [
-            [
-                Paragraph(
-                    "<b>Nota técnica</b><br/>"
-                    "Este documento consolida informações "
-                    "registradas no Gêmeo Digital. A validação "
-                    "do diagnóstico, da classificação e das "
-                    "decisões de intervenção permanece sob "
-                    "responsabilidade do profissional competente.",
-                    estilos["aviso"],
-                )
-            ]
-        ],
-        colWidths=[175 * mm],
-    )
-
-    tabela.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor("#FFF8E1"),
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.6,
-                    colors.HexColor("#F0B429"),
-                ),
-                (
-                    "LINEBEFORE",
-                    (0, 0),
-                    (0, -1),
-                    3,
-                    COR_DESTAQUE,
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    7,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    7,
-                ),
-            ]
-        )
-    )
-
-    return tabela
-
-
-def _cabecalho_rodape_pagina(
-    canvas,
-    doc,
-    nome_oae,
-    tipo_relatorio,
-):
-
+def _cabecalho_rodape_pagina(canvas, doc, nome_oae, tipo_relatorio):
     canvas.saveState()
-
     largura, altura = A4
 
-    canvas.setFillColor(
-        COR_PRIMARIA
-    )
+    canvas.setFillColor(_cor(COR_AZUL))
+    canvas.rect(0, altura - 13 * mm, largura, 13 * mm, fill=1, stroke=0)
 
-    canvas.rect(
-        0,
-        altura - 8 * mm,
-        largura,
-        8 * mm,
-        fill=1,
-        stroke=0,
-    )
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica-Bold", 7.4)
+    canvas.drawString(16 * mm, altura - 8.2 * mm, "GÊMEO DIGITAL PARA INSPEÇÃO DE PONTES")
 
-    canvas.setFont(
-        "Helvetica-Bold",
-        6.8,
-    )
+    canvas.setStrokeColor(_cor(COR_LINHA))
+    canvas.line(15 * mm, 12 * mm, largura - 15 * mm, 12 * mm)
 
-    canvas.setFillColor(
-        colors.white
-    )
-
-    canvas.drawString(
-        15 * mm,
-        altura - 5.2 * mm,
-        "GÊMEO DIGITAL PARA INSPEÇÃO DE PONTES",
-    )
-
-    canvas.setStrokeColor(
-        COR_LINHA
-    )
-
-    canvas.line(
-        15 * mm,
-        11 * mm,
-        largura - 15 * mm,
-        11 * mm,
-    )
-
-    canvas.setFont(
-        "Helvetica",
-        6.3,
-    )
-
-    canvas.setFillColor(
-        COR_TEXTO_SUAVE
-    )
-
-    canvas.drawString(
-        15 * mm,
-        7 * mm,
-        (
-            f"{texto(nome_oae)} | "
-            f"{texto(tipo_relatorio)}"
-        )[:95],
-    )
-
-    canvas.drawRightString(
-        largura - 15 * mm,
-        7 * mm,
-        f"Página {doc.page}",
-    )
+    canvas.setFillColor(_cor("#667481"))
+    canvas.setFont("Helvetica", 6.7)
+    canvas.drawString(16 * mm, 7.4 * mm, f"{texto(nome_oae)} | {texto(tipo_relatorio)}")
+    canvas.drawRightString(largura - 16 * mm, 7.4 * mm, f"Página {doc.page}")
 
     canvas.restoreState()
 
 
-def _tabela_anomalias_pdf(
-    dados,
-    estilos,
-):
-
-    componentes = dados[
-        "componentes"
-    ]
-
-    if len(
-        dados["anomalias"]
-    ) == 0:
-
-        return _tabela_info_profissional_pdf(
-            [
-                (
-                    "Situação",
-                    (
-                        "Nenhuma anomalia relacionada a esta "
-                        "campanha foi localizada no banco de dados."
-                    ),
-                )
-            ],
-            estilos,
-        )
-
-    linhas = [
-        [
-            Paragraph(
-                "ID",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Componente",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Anomalia",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Localização",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Situação",
-                estilos["rotulo"],
-            ),
-        ]
-    ]
-
-    for anomalia, observacao in dados[
-        "anomalias"
-    ]:
-
-        componente = componentes.get(
-            anomalia.componente_id
-        )
-
-        linhas.append(
-            [
-                _paragrafo_pdf(
-                    anomalia.id,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    (
-                        componente.nome
-                        if componente
-                        else "Não localizado"
-                    ),
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    anomalia.tipo_anomalia,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    anomalia.localizacao_referencia,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    (
-                        observacao.situacao_observada
-                        if observacao
-                        else "Registrada nesta inspeção"
-                    ),
-                    estilos["normal_pequeno"],
-                ),
-            ]
-        )
-
+def _nota_tecnica_pdf(estilos):
     tabela = Table(
-        linhas,
-        colWidths=[
-            10 * mm,
-            34 * mm,
-            42 * mm,
-            44 * mm,
-            45 * mm,
-        ],
-        repeatRows=1,
-    )
-
-    comandos = [
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, 0),
-            COR_PRIMARIA,
-        ),
-        (
-            "TEXTCOLOR",
-            (0, 0),
-            (-1, 0),
-            colors.white,
-        ),
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.35,
-            COR_LINHA,
-        ),
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "TOP",
-        ),
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-    ]
-
-    for indice in range(
-        1,
-        len(linhas),
-    ):
-
-        if indice % 2 == 0:
-
-            comandos.append(
-                (
-                    "BACKGROUND",
-                    (0, indice),
-                    (-1, indice),
-                    COR_FUNDO_CLARO,
-                )
+        [[
+            Paragraph(
+                "<b>Nota técnica</b><br/>"
+                "Este documento consolida informações registradas no Gêmeo Digital. "
+                "A validação do diagnóstico, da classificação e das decisões de "
+                "intervenção permanece sob responsabilidade do profissional competente.",
+                estilos["pequeno"],
             )
+        ]],
+        colWidths=[175 * mm],
+    )
 
     tabela.setStyle(
         TableStyle(
-            comandos
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), _cor("#FFF8E4")),
+                ("BOX", (0, 0), (-1, -1), 0.6, _cor("#E7C577")),
+                ("LINEBEFORE", (0, 0), (0, -1), 2.4, _cor(COR_LARANJA)),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
         )
     )
 
     return tabela
 
 
-def _tabela_fotografias_pdf(
-    fotografias,
-    estilos,
-):
+def _imagem_reportlab(caminho, max_largura=78 * mm, max_altura=52 * mm):
+    try:
+        imagem = RLImage(str(caminho))
+        largura = float(imagem.imageWidth)
+        altura = float(imagem.imageHeight)
 
-    if len(
-        fotografias
-    ) == 0:
+        if largura <= 0 or altura <= 0:
+            return None
 
-        return _tabela_info_profissional_pdf(
-            [
-                (
-                    "Registro fotográfico",
-                    (
-                        "Nenhuma fotografia vinculada "
-                        "a esta inspeção."
-                    ),
-                )
-            ],
-            estilos,
-        )
+        fator = min(max_largura / largura, max_altura / altura)
+        imagem.drawWidth = largura * fator
+        imagem.drawHeight = altura * fator
+        return imagem
+    except Exception:
+        return None
 
-    linhas = [
-        [
-            Paragraph(
-                "ID",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Data",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Identificação",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Tipo",
-                estilos["rotulo"],
-            ),
-            Paragraph(
-                "Arquivo",
-                estilos["rotulo"],
-            ),
-        ]
+
+def _bloco_foto_pdf(foto, numero, componentes, estilos):
+    caminho = caminho_foto_existente(foto)
+    componente = componentes.get(getattr(foto, "componente_id", None))
+
+    anomalia = None
+    vinculo = buscar_vinculo_foto_anomalia(foto.id)
+
+    if vinculo is not None:
+        anomalia_id = getattr(vinculo, "anomalia_permanente_id", None)
+        anomalia = buscar_anomalia_por_id(anomalia_id)
+    elif getattr(foto, "anomalia_id", None) is not None:
+        anomalia = buscar_anomalia_por_id(foto.anomalia_id)
+
+    elementos = [
+        Paragraph(f"<b>Foto {numero:02d}</b>", estilos["legenda_bold"]),
+        Spacer(1, 1.2 * mm),
     ]
 
-    for foto in fotografias:
+    imagem = _imagem_reportlab(caminho) if caminho is not None else None
 
-        linhas.append(
-            [
-                _paragrafo_pdf(
-                    foto.id,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    data_br(
-                        foto.data_foto
-                    ),
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    foto.identificacao,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    foto.tipo_registro,
-                    estilos["normal_pequeno"],
-                ),
-                _paragrafo_pdf(
-                    foto.nome_arquivo,
-                    estilos["normal_pequeno"],
-                ),
-            ]
+    if imagem is not None:
+        elementos.append(imagem)
+    else:
+        quadro = Table(
+            [[Paragraph("Imagem não localizada no armazenamento local.", estilos["pequeno"])]],
+            colWidths=[78 * mm],
+            rowHeights=[36 * mm],
         )
-
-    tabela = Table(
-        linhas,
-        colWidths=[
-            10 * mm,
-            25 * mm,
-            52 * mm,
-            38 * mm,
-            50 * mm,
-        ],
-        repeatRows=1,
-    )
-
-    comandos = [
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, 0),
-            COR_PRIMARIA,
-        ),
-        (
-            "TEXTCOLOR",
-            (0, 0),
-            (-1, 0),
-            colors.white,
-        ),
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.35,
-            COR_LINHA,
-        ),
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "TOP",
-        ),
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            4,
-        ),
-    ]
-
-    for indice in range(
-        1,
-        len(linhas),
-    ):
-
-        if indice % 2 == 0:
-
-            comandos.append(
-                (
-                    "BACKGROUND",
-                    (0, indice),
-                    (-1, indice),
-                    COR_FUNDO_CLARO,
-                )
+        quadro.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.5, _cor(COR_LINHA)),
+                    ("BACKGROUND", (0, 0), (-1, -1), _cor(COR_CINZA)),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]
             )
+        )
+        elementos.append(quadro)
 
-    tabela.setStyle(
-        TableStyle(
-            comandos
+    elementos.append(Spacer(1, 1.8 * mm))
+    elementos.append(_p(foto.identificacao, estilos["legenda"]));
+
+    referencias = [
+        f"Data: {data_br(foto.data_foto)}",
+        f"Tipo: {texto(foto.tipo_registro)}",
+    ]
+
+    if componente is not None:
+        referencias.append(
+            f"Componente: {limpar_nome_componente(componente.nome)}"
+        )
+
+    if anomalia is not None:
+        referencias.append(
+            f"Anomalia: {texto(anomalia.tipo_anomalia)}"
+        )
+
+    elementos.append(
+        Paragraph(
+            " | ".join(escape(item) for item in referencias),
+            estilos["pequeno"],
         )
     )
 
-    return tabela
+    if texto(foto.observacoes, "") != "":
+        elementos.append(Spacer(1, 1 * mm))
+        elementos.append(_p(foto.observacoes, estilos["pequeno"], ""))
+
+    return elementos
 
 
 # ============================================================
-# PDF
+# PDF - RELATÓRIO DE UMA INSPEÇÃO
 # ============================================================
 
-def _paragrafo_pdf(
-    valor,
-    estilo,
-):
-
-    valor = escape(
-        texto(valor)
-    ).replace(
-        "\n",
-        "<br/>",
-    )
-
-    return Paragraph(
-        valor,
-        estilo,
-    )
-
-
-def _tabela_chave_valor_pdf(
-    dados,
-    estilo_texto,
-):
-
-    linhas = []
-
-    for chave, valor in dados:
-
-        linhas.append(
-            [
-                _paragrafo_pdf(
-                    chave,
-                    estilo_texto,
-                ),
-                _paragrafo_pdf(
-                    valor,
-                    estilo_texto,
-                ),
-            ]
-        )
-
-    tabela = Table(
-        linhas,
-        colWidths=[
-            55 * mm,
-            120 * mm,
-        ],
-        repeatRows=0,
-    )
-
-    tabela.setStyle(
-        TableStyle(
-            [
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.4,
-                    colors.grey,
-                ),
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, -1),
-                    colors.whitesmoke,
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-            ]
-        )
-    )
-
-    return tabela
-
-
-def gerar_pdf_inspecao(
-    dados,
-):
-
+def gerar_pdf_inspecao(dados):
     if not REPORTLAB_DISPONIVEL:
         return None
 
     buffer = BytesIO()
-
-    oae = dados[
-        "oae"
-    ]
-
-    inspecao = dados[
-        "inspecao"
-    ]
-
-    estilos = estilos_pdf_profissional()
 
     documento = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         rightMargin=17.5 * mm,
         leftMargin=17.5 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
-        title=(
-            "Relatório de inspeção - "
-            + texto(
-                oae.nome
-            )
-        ),
+        topMargin=20 * mm,
+        bottomMargin=18 * mm,
+        title="Relatório técnico de inspeção de OAE",
         author="Gêmeo Digital para Inspeção de Pontes",
     )
 
+    estilos = _estilos_pdf()
     historia = []
+    oae = dados["oae"]
+    inspecao = dados["inspecao"]
+    classificacao = dados["classificacao_geral"]
+    componentes = dados["componentes"]
 
-    historia.append(
-        _cabecalho_relatorio_pdf(
-            "RELATÓRIO DE INSPEÇÃO DE OAE",
-            (
-                f"{texto(inspecao.tipo_inspecao)} | "
-                f"{data_br(inspecao.data_inspecao)} | "
-                f"{texto(oae.nome)}"
-            ),
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _aviso_tecnico_pdf(
-            estilos
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    classificacao = dados[
-        "classificacao_geral"
-    ]
-
-    cards_resumo = [
-        _card_pdf(
-            "Código da OAE",
-            oae.codigo,
-            estilos,
-        ),
-        _card_pdf(
-            "Tipo de inspeção",
-            inspecao.tipo_inspecao,
-            estilos,
-        ),
-        _card_pdf(
-            "Anomalias",
-            len(
-                dados[
-                    "anomalias"
-                ]
-            ),
-            estilos,
-            cor_borda=COR_DESTAQUE,
-        ),
-        _card_pdf(
-            "Fotografias",
-            len(
-                dados[
-                    "fotografias"
-                ]
-            ),
-            estilos,
-        ),
-    ]
-
-    historia.append(
-        _linha_cards_pdf(
-            cards_resumo
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            6 * mm,
-        )
-    )
-
-    # ========================================================
-    # 1. OAE
-    # ========================================================
-
-    historia.append(
-        _barra_secao_pdf(
-            1,
-            "Identificação da OAE",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    historia.append(
-        _tabela_info_profissional_pdf(
-            [
-                (
-                    "Nome",
-                    oae.nome,
-                ),
-                (
-                    "Código",
-                    oae.codigo,
-                ),
-                (
-                    "Rodovia",
-                    oae.rodovia,
-                ),
-                (
-                    "Município / UF",
-                    (
-                        f"{texto(oae.municipio, '')}"
-                        f"{' / ' if oae.municipio and oae.uf else ''}"
-                        f"{texto(oae.uf, '')}"
-                    ),
-                ),
-                (
-                    "Tipo de estrutura",
-                    oae.tipo_estrutura,
-                ),
-                (
-                    "Ano de construção",
-                    oae.ano_construcao,
-                ),
-                (
-                    "Número de vãos",
-                    oae.numero_vaos,
-                ),
-                (
-                    "Comprimento total",
-                    (
-                        f"{numero_br(oae.comprimento_total)} m"
-                        if oae.comprimento_total is not None
-                        else "Não informado"
-                    ),
-                ),
-                (
-                    "Largura total",
-                    (
-                        f"{numero_br(oae.largura)} m"
-                        if oae.largura is not None
-                        else "Não informado"
-                    ),
-                ),
-                (
-                    "Protensão",
-                    oae.tipo_protensao,
-                ),
-            ],
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    # ========================================================
-    # 2. INSPEÇÃO
-    # ========================================================
-
-    historia.append(
-        _barra_secao_pdf(
-            2,
-            "Identificação da inspeção",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    historia.append(
-        _tabela_info_profissional_pdf(
-            [
-                (
-                    "Modalidade",
-                    inspecao.tipo_inspecao,
-                ),
-                (
-                    "Data",
-                    data_br(
-                        inspecao.data_inspecao
-                    ),
-                ),
-                (
-                    "Responsável",
-                    inspecao.responsavel,
-                ),
-                (
-                    "Registro profissional",
-                    inspecao.registro_profissional,
-                ),
-                (
-                    "Observações",
-                    inspecao.observacoes,
-                ),
-            ],
-            estilos,
-        )
-    )
-
-    # ========================================================
-    # 3. DADOS ESPECÍFICOS
-    # ========================================================
-
-    if len(
-        dados[
-            "secoes_especificas"
-        ]
-    ) > 0:
-
-        historia.append(
-            Spacer(
-                1,
-                5 * mm,
-            )
-        )
-
-        historia.append(
-            _barra_secao_pdf(
-                3,
-                "Informações técnicas da campanha",
-                estilos,
-            )
-        )
-
-        for titulo_secao, campos in dados[
-            "secoes_especificas"
-        ]:
-
-            campos_validos = [
-                (
-                    chave,
-                    valor,
-                )
-                for chave, valor in campos.items()
-                if texto(
-                    valor,
-                    "",
-                ) != ""
-            ]
-
-            if len(
-                campos_validos
-            ) == 0:
-                continue
-
-            historia.append(
-                Paragraph(
-                    escape(
-                        titulo_secao
-                    ),
-                    estilos[
-                        "subsecao"
-                    ],
-                )
-            )
-
-            historia.append(
-                _tabela_info_profissional_pdf(
-                    campos_validos,
-                    estilos,
-                )
-            )
-
-    # ========================================================
-    # 4. ANOMALIAS
-    # ========================================================
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _barra_secao_pdf(
-            4,
-            "Anomalias relacionadas à campanha",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    historia.append(
-        _tabela_anomalias_pdf(
-            dados,
-            estilos,
-        )
-    )
-
-    # ========================================================
-    # 5. CLASSIFICAÇÃO
-    # ========================================================
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _barra_secao_pdf(
-            5,
-            "Classificação da OAE",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            3 * mm,
-        )
-    )
-
-    historia.append(
-        _classificacao_cards_pdf(
-            classificacao,
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
+    historia.append(Spacer(1, 3 * mm))
+    historia.append(Paragraph("RELATÓRIO TÉCNICO DE INSPEÇÃO DE OAE", estilos["titulo"]))
     historia.append(
         Paragraph(
             (
-                "As cores são utilizadas apenas como recurso "
-                "visual para facilitar a leitura das notas "
-                "registradas no sistema."
+                f"{escape(texto(inspecao.tipo_inspecao))} | "
+                f"{escape(data_br(inspecao.data_inspecao))} | "
+                f"{escape(nome_oae_exibicao(oae))}"
             ),
-            estilos[
-                "normal_pequeno"
-            ],
+            estilos["subtitulo"],
         )
     )
+    historia.append(_nota_tecnica_pdf(estilos))
+    historia.append(Spacer(1, 4 * mm))
 
-    if len(
-        dados[
-            "classificacoes"
-        ]
-    ) > 0:
+    cards = [
+        _card_pdf("Código", texto(oae.codigo), estilos),
+        _card_pdf("Anomalias", len(dados["anomalias"]), estilos, destaque=True),
+        _card_pdf("Fotos", len(dados["fotografias"]), estilos),
+        _card_pdf(
+            "Estrutural",
+            classificacao_com_condicao(classificacao["estrutural"]),
+            estilos,
+            destaque=(classificacao["estrutural"] is not None and int(classificacao["estrutural"]) <= 3),
+        ),
+        _card_pdf(
+            "Funcional",
+            classificacao_com_condicao(classificacao["funcional"]),
+            estilos,
+            destaque=(classificacao["funcional"] is not None and int(classificacao["funcional"]) <= 3),
+        ),
+        _card_pdf(
+            "Durabilidade",
+            classificacao_com_condicao(classificacao["durabilidade"]),
+            estilos,
+            destaque=(classificacao["durabilidade"] is not None and int(classificacao["durabilidade"]) <= 3),
+        ),
+    ]
 
-        componentes = dados[
-            "componentes"
-        ]
-
-        linhas_classificacao = [
+    tabela_cards = Table(
+        [cards[:3], cards[3:]],
+        colWidths=[58.3 * mm, 58.3 * mm, 58.3 * mm],
+        hAlign="LEFT",
+    )
+    tabela_cards.setStyle(
+        TableStyle(
             [
-                Paragraph(
-                    "Componente",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Estrutural",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Funcional",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Durabilidade",
-                    estilos["rotulo"],
-                ),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
-        ]
+        )
+    )
+    historia.append(tabela_cards)
+    historia.append(Spacer(1, 5 * mm))
 
-        for item in dados[
-            "classificacoes"
-        ]:
+    secao = 1
 
-            componente = componentes.get(
-                item.componente_id
+    historia.append(_secao_pdf(secao, "Identificação da OAE", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+    historia.append(
+        _tabela_chave_valor_pdf(
+            [
+                ("Nome", oae.nome),
+                ("Código", oae.codigo),
+                ("Rodovia", oae.rodovia),
+                (
+                    "Município / UF",
+                    f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
+                ),
+                ("Tipo de estrutura", oae.tipo_estrutura),
+                ("Ano de construção", oae.ano_construcao),
+                ("Número de vãos", oae.numero_vaos),
+                ("Comprimento total", f"{numero_br(oae.comprimento_total)} m"),
+                ("Largura total", f"{numero_br(oae.largura)} m"),
+                ("Protensão", oae.tipo_protensao),
+            ],
+            estilos,
+        )
+    )
+    historia.append(Spacer(1, 4 * mm))
+
+    historia.append(_secao_pdf(secao, "Identificação e objetivo da inspeção", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+    historia.append(
+        _tabela_chave_valor_pdf(
+            [
+                ("Modalidade", inspecao.tipo_inspecao),
+                ("Data", data_br(inspecao.data_inspecao)),
+                ("Responsável", inspecao.responsavel),
+                ("Registro profissional", inspecao.registro_profissional),
+                ("Objetivo / observações", inspecao.observacoes),
+            ],
+            estilos,
+        )
+    )
+    historia.append(Spacer(1, 4 * mm))
+
+    historia.append(_secao_pdf(secao, "Histórico das inspeções", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+
+    linhas_hist = [[
+        _p("Inspeção", estilos["pequeno"]),
+        _p("Modalidade", estilos["pequeno"]),
+        _p("Data", estilos["pequeno"]),
+    ]]
+
+    for indice, item in enumerate(dados["historico_ate_campanha"], start=1):
+        linhas_hist.append(
+            [
+                _p(f"{indice:02d}", estilos["normal"]),
+                _p(item.tipo_inspecao, estilos["normal"]),
+                _p(data_br(item.data_inspecao), estilos["normal"]),
+            ]
+        )
+
+    tabela_hist = Table(
+        linhas_hist,
+        colWidths=[25 * mm, 95 * mm, 55 * mm],
+        repeatRows=1,
+    )
+    tabela_hist.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), _cor(COR_AZUL)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    historia.append(tabela_hist)
+    historia.append(Spacer(1, 4 * mm))
+
+    for titulo_secao, campos in dados["secoes_especificas"]:
+        historia.append(_secao_pdf(secao, titulo_secao, estilos))
+        secao += 1
+        historia.append(Spacer(1, 2 * mm))
+
+        linhas = [(chave, valor) for chave, valor in campos.items()]
+        historia.append(_tabela_chave_valor_pdf(linhas, estilos))
+        historia.append(Spacer(1, 4 * mm))
+
+    historia.append(_secao_pdf(secao, "Registro e evolução das anomalias", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+
+    if len(dados["anomalias"]) == 0:
+        historia.append(_p("Nenhuma anomalia relacionada à campanha.", estilos["normal"]))
+    else:
+        linhas = [[
+            _p("Ref.", estilos["pequeno"]),
+            _p("Componente", estilos["pequeno"]),
+            _p("Anomalia", estilos["pequeno"]),
+            _p("Localização", estilos["pequeno"]),
+            _p("Situação", estilos["pequeno"]),
+        ]]
+
+        for indice, (anomalia, observacao) in enumerate(dados["anomalias"], start=1):
+            componente = componentes.get(anomalia.componente_id)
+            situacao = (
+                observacao.situacao_observada
+                if observacao is not None
+                else "Identificada nesta inspeção"
             )
 
-            linhas_classificacao.append(
+            linhas.append(
                 [
-                    _paragrafo_pdf(
-                        (
-                            componente.nome
-                            if componente
-                            else item.componente_id
+                    _p(f"AN-{indice:02d}", estilos["pequeno"]),
+                    _p(
+                        limpar_nome_componente(
+                            componente.nome if componente else None
                         ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
+                        estilos["pequeno"],
                     ),
-                    _paragrafo_pdf(
-                        item.nota_estrutural,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            item.nota_funcional
-                            if item.nota_funcional
-                            is not None
-                            else "NA"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        item.nota_durabilidade,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
+                    _p(anomalia.tipo_anomalia, estilos["pequeno"]),
+                    _p(anomalia.localizacao_referencia, estilos["pequeno"]),
+                    _p(situacao, estilos["pequeno"]),
                 ]
             )
 
-        tabela_classificacao = Table(
-            linhas_classificacao,
-            colWidths=[
-                85 * mm,
-                30 * mm,
-                30 * mm,
-                30 * mm,
-            ],
+        tabela_anomalias = Table(
+            linhas,
+            colWidths=[16 * mm, 35 * mm, 40 * mm, 54 * mm, 30 * mm],
             repeatRows=1,
         )
-
-        tabela_classificacao.setStyle(
+        tabela_anomalias.setStyle(
             TableStyle(
                 [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        COR_PRIMARIA,
-                    ),
-                    (
-                        "TEXTCOLOR",
-                        (0, 0),
-                        (-1, 0),
-                        colors.white,
-                    ),
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.35,
-                        COR_LINHA,
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "MIDDLE",
-                    ),
-                    (
-                        "ALIGN",
-                        (1, 1),
-                        (-1, -1),
-                        "CENTER",
-                    ),
-                    (
-                        "LEFTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        5,
-                    ),
-                    (
-                        "RIGHTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        5,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
+                    ("BACKGROUND", (0, 0), (-1, 0), _cor(COR_AZUL)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ]
             )
         )
+        historia.append(tabela_anomalias)
 
+    historia.append(Spacer(1, 4 * mm))
+    historia.append(_secao_pdf(secao, "Classificação da condição da OAE", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+
+    tabela_notas = Table(
+        [[
+            _card_pdf(
+                "Estrutural",
+                classificacao_com_condicao(classificacao["estrutural"]),
+                estilos,
+                destaque=(classificacao["estrutural"] is not None and int(classificacao["estrutural"]) <= 3),
+            ),
+            _card_pdf(
+                "Funcional",
+                classificacao_com_condicao(classificacao["funcional"]),
+                estilos,
+                destaque=(classificacao["funcional"] is not None and int(classificacao["funcional"]) <= 3),
+            ),
+            _card_pdf(
+                "Durabilidade",
+                classificacao_com_condicao(classificacao["durabilidade"]),
+                estilos,
+                destaque=(classificacao["durabilidade"] is not None and int(classificacao["durabilidade"]) <= 3),
+            ),
+        ]],
+        colWidths=[58.3 * mm, 58.3 * mm, 58.3 * mm],
+    )
+    tabela_notas.setStyle(
+        TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    historia.append(tabela_notas)
+
+    if dados["classificacao_direta"] is not None:
+        registro = dados["classificacao_direta"]
+        justificativas = [
+            ("Justificativa estrutural", registro.get("justificativa_estrutural")),
+            ("Justificativa funcional", registro.get("justificativa_funcional")),
+            ("Justificativa de durabilidade", registro.get("justificativa_durabilidade")),
+            ("Observações da classificação", registro.get("observacoes")),
+        ]
+
+        if any(texto(v, "") != "" for _, v in justificativas):
+            historia.append(Spacer(1, 3 * mm))
+            historia.append(_tabela_chave_valor_pdf(justificativas, estilos))
+
+    if eh_inspecao_especial(inspecao) and dados["classificacoes_componentes"]:
+        historia.append(Spacer(1, 3 * mm))
         historia.append(
-            Spacer(
-                1,
-                3 * mm,
+            Paragraph(
+                "<b>Classificação detalhada por componente</b>",
+                estilos["normal"],
             )
         )
+        historia.append(Spacer(1, 1.5 * mm))
 
+        linhas = [[
+            _p("Componente", estilos["pequeno"]),
+            _p("Estrutural", estilos["pequeno"]),
+            _p("Funcional", estilos["pequeno"]),
+            _p("Durabilidade", estilos["pequeno"]),
+        ]]
+
+        for item in dados["classificacoes_componentes"]:
+            componente = componentes.get(item.componente_id)
+            linhas.append(
+                [
+                    _p(
+                        limpar_nome_componente(
+                            componente.nome if componente else None
+                        ),
+                        estilos["pequeno"],
+                    ),
+                    _p(item.nota_estrutural, estilos["pequeno"]),
+                    _p(item.nota_funcional, estilos["pequeno"], "NA"),
+                    _p(item.nota_durabilidade, estilos["pequeno"]),
+                ]
+            )
+
+        tabela_componentes = Table(
+            linhas,
+            colWidths=[85 * mm, 30 * mm, 30 * mm, 30 * mm],
+            repeatRows=1,
+        )
+        tabela_componentes.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), _cor(COR_AZUL)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        historia.append(tabela_componentes)
+
+    historia.append(Spacer(1, 4 * mm))
+    historia.append(_secao_pdf(secao, "Levantamento fotográfico", estilos))
+    secao += 1
+    historia.append(Spacer(1, 2 * mm))
+
+    historia.append(
+        _p(
+            (
+                f"Foram vinculadas {len(dados['fotografias'])} fotografia(s) "
+                "à campanha. As imagens abaixo são apresentadas com identificação "
+                "e referência aos dados registrados no sistema."
+            ),
+            estilos["normal"],
+        )
+    )
+    historia.append(Spacer(1, 3 * mm))
+
+    if len(dados["fotografias"]) == 0:
+        historia.append(_p("Nenhuma fotografia vinculada à inspeção.", estilos["normal"]))
+    else:
+        fotos = dados["fotografias"]
+
+        for inicio in range(0, len(fotos), 2):
+            celulas = []
+
+            for deslocamento in range(2):
+                indice = inicio + deslocamento
+
+                if indice < len(fotos):
+                    foto = fotos[indice]
+                    bloco = _bloco_foto_pdf(
+                        foto,
+                        indice + 1,
+                        componentes,
+                        estilos,
+                    )
+                    celulas.append(bloco)
+                else:
+                    celulas.append("")
+
+            tabela_fotos = Table(
+                [celulas],
+                colWidths=[86.5 * mm, 86.5 * mm],
+                hAlign="LEFT",
+            )
+            tabela_fotos.setStyle(
+                TableStyle(
+                    [
+                        ("BOX", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ]
+                )
+            )
+            historia.append(KeepTogether(tabela_fotos))
+            historia.append(Spacer(1, 3 * mm))
+
+    # Síntese final sem inventar diagnóstico.
+    registro_rotineira = (
+        buscar_dados_rotineira(inspecao.id)
+        if texto(inspecao.tipo_inspecao, "") == "Rotineira"
+        else None
+    )
+
+    if registro_rotineira is not None:
+        historia.append(_secao_pdf(secao, "Síntese dos registros e recomendações", estilos))
+        secao += 1
+        historia.append(Spacer(1, 2 * mm))
         historia.append(
-            tabela_classificacao
+            _tabela_chave_valor_pdf(
+                [
+                    (
+                        "Alterações observadas",
+                        getattr(registro_rotineira, "comentarios_alteracoes", None),
+                    ),
+                    (
+                        "Informações complementares",
+                        getattr(registro_rotineira, "informacoes_complementares", None),
+                    ),
+                    (
+                        "Recomendações terapêuticas",
+                        getattr(registro_rotineira, "recomendacoes_terapeuticas", None),
+                    ),
+                ],
+                estilos,
+            )
         )
-
-    # ========================================================
-    # 6. FOTOGRAFIAS
-    # ========================================================
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _barra_secao_pdf(
-            6,
-            "Registro fotográfico",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    historia.append(
-        _tabela_fotografias_pdf(
-            dados[
-                "fotografias"
-            ],
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            6 * mm,
-        )
-    )
+        historia.append(Spacer(1, 4 * mm))
 
     historia.append(
         HRFlowable(
             width="100%",
             thickness=0.5,
-            color=COR_LINHA,
+            color=_cor(COR_LINHA),
         )
     )
-
+    historia.append(Spacer(1, 3 * mm))
     historia.append(
-        Spacer(
-            1,
-            2 * mm,
+        Paragraph(
+            (
+                f"<b>Profissional responsável:</b> {escape(texto(inspecao.responsavel))}<br/>"
+                f"<b>Registro profissional:</b> {escape(texto(inspecao.registro_profissional))}<br/><br/>"
+                "Este relatório deve ser tecnicamente conferido e validado pelo profissional responsável."
+            ),
+            estilos["normal"],
         )
     )
-
+    historia.append(Spacer(1, 4 * mm))
     historia.append(
         Paragraph(
             (
@@ -3478,27 +1909,16 @@ def gerar_pdf_inspecao(
                 f"{datetime.now().strftime('%d/%m/%Y às %H:%M')} "
                 "a partir dos dados armazenados no sistema."
             ),
-            estilos[
-                "rodape"
-            ],
+            estilos["pequeno"],
         )
     )
 
-    def pagina(
-        canvas,
-        doc,
-    ):
-
+    def pagina(canvas, doc):
         _cabecalho_rodape_pagina(
             canvas,
             doc,
             nome_oae=oae.nome,
-            tipo_relatorio=(
-                "Inspeção "
-                + texto(
-                    inspecao.tipo_inspecao
-                )
-            ),
+            tipo_relatorio=f"Inspeção {texto(inspecao.tipo_inspecao)}",
         )
 
     documento.build(
@@ -3507,861 +1927,185 @@ def gerar_pdf_inspecao(
         onLaterPages=pagina,
     )
 
-    buffer.seek(
-        0
-    )
-
+    buffer.seek(0)
     return buffer.getvalue()
 
 
-def gerar_pdf_consolidado(
-    dados,
-):
+# ============================================================
+# PDF - RELATÓRIO CONSOLIDADO
+# ============================================================
 
+def gerar_pdf_consolidado(dados):
     if not REPORTLAB_DISPONIVEL:
         return None
 
     buffer = BytesIO()
-
-    oae = dados[
-        "oae"
-    ]
-
-    estilos = estilos_pdf_profissional()
 
     documento = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         rightMargin=17.5 * mm,
         leftMargin=17.5 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
-        title=(
-            "Relatório consolidado - "
-            + texto(
-                oae.nome
-            )
-        ),
+        topMargin=20 * mm,
+        bottomMargin=18 * mm,
+        title="Relatório consolidado da OAE",
         author="Gêmeo Digital para Inspeção de Pontes",
     )
 
+    estilos = _estilos_pdf()
     historia = []
+    oae = dados["oae"]
 
+    historia.append(Spacer(1, 3 * mm))
+    historia.append(Paragraph("RELATÓRIO CONSOLIDADO DA OAE", estilos["titulo"]))
+    historia.append(Paragraph(escape(nome_oae_exibicao(oae)), estilos["subtitulo"]))
+    historia.append(_nota_tecnica_pdf(estilos))
+    historia.append(Spacer(1, 5 * mm))
+
+    historia.append(_secao_pdf(1, "Identificação da OAE", estilos))
+    historia.append(Spacer(1, 2 * mm))
     historia.append(
-        _cabecalho_relatorio_pdf(
-            "RELATÓRIO CONSOLIDADO DA OAE",
-            (
-                f"Histórico de inspeções | "
-                f"{texto(oae.nome)} | "
-                f"{texto(oae.codigo)}"
-            ),
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _aviso_tecnico_pdf(
-            estilos
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    total_ativas = sum(
-        1
-        for item in dados[
-            "anomalias"
-        ]
-        if item.ativa
-    )
-
-    cards = [
-        _card_pdf(
-            "Inspeções",
-            len(
-                dados[
-                    "inspecoes"
-                ]
-            ),
-            estilos,
-        ),
-        _card_pdf(
-            "Componentes",
-            len(
-                dados[
-                    "componentes"
-                ]
-            ),
-            estilos,
-        ),
-        _card_pdf(
-            "Anomalias cadastradas",
-            len(
-                dados[
-                    "anomalias"
-                ]
-            ),
-            estilos,
-            cor_borda=COR_DESTAQUE,
-        ),
-        _card_pdf(
-            "Anomalias ativas",
-            total_ativas,
-            estilos,
-            cor_borda=(
-                COR_NOTA_1
-                if total_ativas > 0
-                else COR_NOTA_5
-            ),
-        ),
-    ]
-
-    historia.append(
-        _linha_cards_pdf(
-            cards
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            6 * mm,
-        )
-    )
-
-    # ========================================================
-    # 1. IDENTIFICAÇÃO
-    # ========================================================
-
-    historia.append(
-        _barra_secao_pdf(
-            1,
-            "Identificação da OAE",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    historia.append(
-        _tabela_info_profissional_pdf(
+        _tabela_chave_valor_pdf(
             [
-                (
-                    "Nome",
-                    oae.nome,
-                ),
-                (
-                    "Código",
-                    oae.codigo,
-                ),
-                (
-                    "Rodovia",
-                    oae.rodovia,
-                ),
+                ("Nome", oae.nome),
+                ("Código", oae.codigo),
+                ("Rodovia", oae.rodovia),
                 (
                     "Município / UF",
-                    (
-                        f"{texto(oae.municipio, '')}"
-                        f"{' / ' if oae.municipio and oae.uf else ''}"
-                        f"{texto(oae.uf, '')}"
-                    ),
+                    f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
                 ),
-                (
-                    "Tipo de estrutura",
-                    oae.tipo_estrutura,
-                ),
-                (
-                    "Ano de construção",
-                    oae.ano_construcao,
-                ),
-                (
-                    "Número de vãos",
-                    oae.numero_vaos,
-                ),
-                (
-                    "Comprimento total",
-                    (
-                        f"{numero_br(oae.comprimento_total)} m"
-                        if oae.comprimento_total is not None
-                        else "Não informado"
-                    ),
-                ),
-                (
-                    "Largura",
-                    (
-                        f"{numero_br(oae.largura)} m"
-                        if oae.largura is not None
-                        else "Não informado"
-                    ),
-                ),
+                ("Tipo de estrutura", oae.tipo_estrutura),
+                ("Ano de construção", oae.ano_construcao),
+                ("Número de vãos", oae.numero_vaos),
             ],
             estilos,
         )
     )
+    historia.append(Spacer(1, 4 * mm))
 
-    # ========================================================
-    # 2. HISTÓRICO
-    # ========================================================
+    historia.append(_secao_pdf(2, "Histórico de inspeções e classificações", estilos))
+    historia.append(Spacer(1, 2 * mm))
 
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
+    linhas = [[
+        _p("Nº", estilos["pequeno"]),
+        _p("Data", estilos["pequeno"]),
+        _p("Tipo", estilos["pequeno"]),
+        _p("E", estilos["pequeno"]),
+        _p("F", estilos["pequeno"]),
+        _p("D", estilos["pequeno"]),
+        _p("Anom.", estilos["pequeno"]),
+        _p("Fotos", estilos["pequeno"]),
+    ]]
 
-    historia.append(
-        _barra_secao_pdf(
-            2,
-            "Linha do tempo das inspeções",
-            estilos,
-        )
-    )
+    for indice, campanha in enumerate(dados["campanhas"], start=1):
+        inspecao = campanha["inspecao"]
+        clas = campanha["classificacao"]
 
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    if len(
-        dados[
-            "campanhas"
-        ]
-    ) == 0:
-
-        historia.append(
-            _tabela_info_profissional_pdf(
-                [
-                    (
-                        "Situação",
-                        "Nenhuma inspeção cadastrada.",
-                    )
-                ],
-                estilos,
-            )
-        )
-
-    else:
-
-        linhas = [
+        linhas.append(
             [
-                Paragraph(
-                    "Data",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Modalidade",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "E",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "F",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "D",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Fotos",
-                    estilos["rotulo"],
-                ),
+                _p(f"{indice:02d}", estilos["pequeno"]),
+                _p(data_br(inspecao.data_inspecao), estilos["pequeno"]),
+                _p(inspecao.tipo_inspecao, estilos["pequeno"]),
+                _p(clas["estrutural"], estilos["pequeno"]),
+                _p(clas["funcional"], estilos["pequeno"]),
+                _p(clas["durabilidade"], estilos["pequeno"]),
+                _p(campanha["quantidade_anomalias"], estilos["pequeno"]),
+                _p(campanha["quantidade_fotos"], estilos["pequeno"]),
             ]
-        ]
+        )
 
-        for campanha in dados[
-            "campanhas"
-        ]:
-
-            inspecao = campanha[
-                "inspecao"
+    tabela = Table(
+        linhas,
+        colWidths=[12 * mm, 27 * mm, 39 * mm, 18 * mm, 18 * mm, 18 * mm, 22 * mm, 21 * mm],
+        repeatRows=1,
+    )
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), _cor(COR_AZUL)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ]
+        )
+    )
+    historia.append(tabela)
+    historia.append(Spacer(1, 4 * mm))
 
-            classificacao = campanha[
-                "classificacao"
-            ]
+    historia.append(_secao_pdf(3, "Inventário atual de anomalias", estilos))
+    historia.append(Spacer(1, 2 * mm))
 
+    if not dados["anomalias"]:
+        historia.append(_p("Nenhuma anomalia permanente cadastrada.", estilos["normal"]))
+    else:
+        componentes = {item.id: item for item in dados["componentes"]}
+        linhas = [[
+            _p("Ref.", estilos["pequeno"]),
+            _p("Componente", estilos["pequeno"]),
+            _p("Anomalia", estilos["pequeno"]),
+            _p("Localização", estilos["pequeno"]),
+            _p("Status", estilos["pequeno"]),
+        ]]
+
+        for indice, anomalia in enumerate(dados["anomalias"], start=1):
+            componente = componentes.get(anomalia.componente_id)
             linhas.append(
                 [
-                    _paragrafo_pdf(
-                        data_br(
-                            inspecao.data_inspecao
+                    _p(f"AN-{indice:02d}", estilos["pequeno"]),
+                    _p(
+                        limpar_nome_componente(
+                            componente.nome if componente else None
                         ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
+                        estilos["pequeno"],
                     ),
-                    _paragrafo_pdf(
-                        inspecao.tipo_inspecao,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            classificacao[
-                                "estrutural"
-                            ]
-                            if classificacao[
-                                "estrutural"
-                            ] is not None
-                            else "NA"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            classificacao[
-                                "funcional"
-                            ]
-                            if classificacao[
-                                "funcional"
-                            ] is not None
-                            else "NA"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            classificacao[
-                                "durabilidade"
-                            ]
-                            if classificacao[
-                                "durabilidade"
-                            ] is not None
-                            else "NA"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        campanha[
-                            "quantidade_fotos"
-                        ],
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                ]
-            )
-
-        tabela_historico = Table(
-            linhas,
-            colWidths=[
-                29 * mm,
-                66 * mm,
-                20 * mm,
-                20 * mm,
-                20 * mm,
-                20 * mm,
-            ],
-            repeatRows=1,
-        )
-
-        tabela_historico.setStyle(
-            TableStyle(
-                [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        COR_PRIMARIA,
-                    ),
-                    (
-                        "TEXTCOLOR",
-                        (0, 0),
-                        (-1, 0),
-                        colors.white,
-                    ),
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.35,
-                        COR_LINHA,
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "MIDDLE",
-                    ),
-                    (
-                        "ALIGN",
-                        (2, 1),
-                        (-1, -1),
-                        "CENTER",
-                    ),
-                    (
-                        "LEFTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "RIGHTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                ]
-            )
-        )
-
-        historia.append(
-            tabela_historico
-        )
-
-    # ========================================================
-    # 3. COMPONENTES
-    # ========================================================
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _barra_secao_pdf(
-            3,
-            "Inventário de componentes",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    if len(
-        dados[
-            "componentes"
-        ]
-    ) == 0:
-
-        historia.append(
-            _tabela_info_profissional_pdf(
-                [
-                    (
-                        "Situação",
-                        "Nenhum componente cadastrado.",
-                    )
-                ],
-                estilos,
-            )
-        )
-
-    else:
-
-        linhas_componentes = [
-            [
-                Paragraph(
-                    "ID",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Categoria",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Componente",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Classificação do elemento",
-                    estilos["rotulo"],
-                ),
-            ]
-        ]
-
-        for componente in dados[
-            "componentes"
-        ]:
-
-            linhas_componentes.append(
-                [
-                    _paragrafo_pdf(
-                        componente.id,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        componente.categoria,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        componente.nome,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        componente.classificacao_elemento,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                ]
-            )
-
-        tabela_componentes = Table(
-            linhas_componentes,
-            colWidths=[
-                12 * mm,
-                48 * mm,
-                65 * mm,
-                50 * mm,
-            ],
-            repeatRows=1,
-        )
-
-        tabela_componentes.setStyle(
-            TableStyle(
-                [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        COR_PRIMARIA,
-                    ),
-                    (
-                        "TEXTCOLOR",
-                        (0, 0),
-                        (-1, 0),
-                        colors.white,
-                    ),
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.35,
-                        COR_LINHA,
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "TOP",
-                    ),
-                    (
-                        "LEFTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "RIGHTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                ]
-            )
-        )
-
-        historia.append(
-            tabela_componentes
-        )
-
-    # ========================================================
-    # 4. ANOMALIAS
-    # ========================================================
-
-    historia.append(
-        Spacer(
-            1,
-            5 * mm,
-        )
-    )
-
-    historia.append(
-        _barra_secao_pdf(
-            4,
-            "Inventário de anomalias",
-            estilos,
-        )
-    )
-
-    historia.append(
-        Spacer(
-            1,
-            2.5 * mm,
-        )
-    )
-
-    if len(
-        dados[
-            "anomalias"
-        ]
-    ) == 0:
-
-        historia.append(
-            _tabela_info_profissional_pdf(
-                [
-                    (
-                        "Situação",
-                        "Nenhuma anomalia cadastrada.",
-                    )
-                ],
-                estilos,
-            )
-        )
-
-    else:
-
-        componentes = {
-            item.id: item
-            for item in dados[
-                "componentes"
-            ]
-        }
-
-        linhas_anomalias = [
-            [
-                Paragraph(
-                    "ID",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Componente",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Anomalia",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Localização",
-                    estilos["rotulo"],
-                ),
-                Paragraph(
-                    "Status",
-                    estilos["rotulo"],
-                ),
-            ]
-        ]
-
-        for anomalia in dados[
-            "anomalias"
-        ]:
-
-            componente = componentes.get(
-                anomalia.componente_id
-            )
-
-            linhas_anomalias.append(
-                [
-                    _paragrafo_pdf(
-                        anomalia.id,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            componente.nome
-                            if componente
-                            else "Não localizado"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        anomalia.tipo_anomalia,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        anomalia.localizacao_referencia,
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
-                    _paragrafo_pdf(
-                        (
-                            "Ativa"
-                            if anomalia.ativa
-                            else "Encerrada"
-                        ),
-                        estilos[
-                            "normal_pequeno"
-                        ],
-                    ),
+                    _p(anomalia.tipo_anomalia, estilos["pequeno"]),
+                    _p(anomalia.localizacao_referencia, estilos["pequeno"]),
+                    _p("Ativa" if anomalia.ativa else "Encerrada", estilos["pequeno"]),
                 ]
             )
 
         tabela_anomalias = Table(
-            linhas_anomalias,
-            colWidths=[
-                10 * mm,
-                40 * mm,
-                42 * mm,
-                55 * mm,
-                28 * mm,
-            ],
+            linhas,
+            colWidths=[16 * mm, 38 * mm, 42 * mm, 54 * mm, 25 * mm],
             repeatRows=1,
         )
-
         tabela_anomalias.setStyle(
             TableStyle(
                 [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        COR_PRIMARIA,
-                    ),
-                    (
-                        "TEXTCOLOR",
-                        (0, 0),
-                        (-1, 0),
-                        colors.white,
-                    ),
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.35,
-                        COR_LINHA,
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "TOP",
-                    ),
-                    (
-                        "LEFTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "RIGHTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
+                    ("BACKGROUND", (0, 0), (-1, 0), _cor(COR_AZUL)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ]
             )
         )
+        historia.append(tabela_anomalias)
 
-        historia.append(
-            tabela_anomalias
-        )
-
-    historia.append(
-        Spacer(
-            1,
-            6 * mm,
-        )
-    )
-
+    historia.append(Spacer(1, 6 * mm))
     historia.append(
         HRFlowable(
             width="100%",
             thickness=0.5,
-            color=COR_LINHA,
+            color=_cor(COR_LINHA),
         )
     )
-
-    historia.append(
-        Spacer(
-            1,
-            2 * mm,
-        )
-    )
-
+    historia.append(Spacer(1, 2 * mm))
     historia.append(
         Paragraph(
-            (
-                "Relatório consolidado gerado em "
-                f"{datetime.now().strftime('%d/%m/%Y às %H:%M')}."
-            ),
-            estilos[
-                "rodape"
-            ],
+            f"Relatório consolidado gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}.",
+            estilos["pequeno"],
         )
     )
 
-    def pagina(
-        canvas,
-        doc,
-    ):
-
+    def pagina(canvas, doc):
         _cabecalho_rodape_pagina(
             canvas,
             doc,
@@ -4375,326 +2119,167 @@ def gerar_pdf_consolidado(
         onLaterPages=pagina,
     )
 
-    buffer.seek(
-        0
-    )
-
+    buffer.seek(0)
     return buffer.getvalue()
 
 
 # ============================================================
-# PREVISUALIZAÇÃO NO STREAMLIT
+# PRÉVIAS NO STREAMLIT
 # ============================================================
 
-def mostrar_preview_inspecao(
-    dados,
-):
+def mostrar_preview_inspecao(dados):
+    oae = dados["oae"]
+    inspecao = dados["inspecao"]
+    classificacao = dados["classificacao_geral"]
 
-    oae = dados[
-        "oae"
-    ]
+    st.subheader("Prévia técnica do relatório")
 
-    inspecao = dados[
-        "inspecao"
-    ]
-
-    classificacao = dados[
-        "classificacao_geral"
-    ]
-
-    st.subheader(
-        "Prévia do relatório"
-    )
-
-    c1, c2, c3, c4 = st.columns(
-        4
-    )
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-
-        st.metric(
-            "Inspeção",
-            inspecao.tipo_inspecao,
-        )
+        st.metric("Inspeção", inspecao.tipo_inspecao)
 
     with c2:
-
-        st.metric(
-            "Anomalias relacionadas",
-            len(
-                dados[
-                    "anomalias"
-                ]
-            ),
-        )
+        st.metric("Anomalias relacionadas", len(dados["anomalias"]))
 
     with c3:
-
-        st.metric(
-            "Fotografias",
-            len(
-                dados[
-                    "fotografias"
-                ]
-            ),
-        )
+        st.metric("Fotografias", len(dados["fotografias"]))
 
     with c4:
+        if eh_inspecao_especial(inspecao):
+            st.metric(
+                "Componentes classificados",
+                len(dados["classificacoes_componentes"]),
+            )
+        else:
+            st.metric(
+                "Classificação da OAE",
+                "Concluída" if dados["classificacao_direta"] is not None else "Pendente",
+            )
 
-        st.metric(
-            "Componentes classificados",
-            len(
-                dados[
-                    "classificacoes"
-                ]
-            ),
-        )
+    st.write(f"**OAE:** {nome_oae_exibicao(oae)}")
+    st.write(f"**Data:** {data_br(inspecao.data_inspecao)}")
+    st.write(f"**Responsável:** {texto(inspecao.responsavel)}")
 
-    st.write(
-        f"**OAE:** {oae.id} - {oae.nome}"
-    )
-
-    st.write(
-        f"**Data:** {data_br(inspecao.data_inspecao)}"
-    )
-
-    st.write(
-        f"**Responsável:** {texto(inspecao.responsavel)}"
-    )
-
-    st.markdown(
-        "#### Classificação consolidada"
-    )
-
-    col1, col2, col3 = st.columns(
-        3
-    )
+    st.markdown("#### Classificação da condição")
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-
         st.metric(
             "Estrutural",
-            texto(
-                classificacao[
-                    "estrutural"
-                ]
-            ),
+            classificacao_com_condicao(classificacao["estrutural"]),
         )
 
     with col2:
-
         st.metric(
             "Funcional",
-            texto(
-                classificacao[
-                    "funcional"
-                ],
-                "NA",
-            ),
+            classificacao_com_condicao(classificacao["funcional"]),
         )
 
     with col3:
-
         st.metric(
             "Durabilidade",
-            texto(
-                classificacao[
-                    "durabilidade"
-                ]
-            ),
+            classificacao_com_condicao(classificacao["durabilidade"]),
         )
 
-    if len(
-        dados["anomalias"]
-    ) > 0:
-
-        componentes = dados[
-            "componentes"
-        ]
-
-        st.markdown(
-            "#### Anomalias da campanha"
-        )
-
+    if dados["anomalias"]:
+        st.markdown("#### Anomalias da campanha")
+        componentes = dados["componentes"]
         tabela = []
 
-        for anomalia, observacao in dados[
-            "anomalias"
-        ]:
-
-            componente = componentes.get(
-                anomalia.componente_id
-            )
-
+        for indice, (anomalia, observacao) in enumerate(dados["anomalias"], start=1):
+            componente = componentes.get(anomalia.componente_id)
             tabela.append(
                 {
-                    "ID":
-                        anomalia.id,
-
-                    "Componente":
-                        (
-                            componente.nome
-                            if componente
-                            else "Não localizado"
-                        ),
-
-                    "Anomalia":
-                        anomalia.tipo_anomalia,
-
-                    "Localização":
-                        anomalia.localizacao_referencia,
-
-                    "Situação":
-                        (
-                            observacao.situacao_observada
-                            if observacao
-                            else "Registrada nesta inspeção"
-                        ),
+                    "Ref.": f"AN-{indice:02d}",
+                    "Componente": limpar_nome_componente(
+                        componente.nome if componente else None
+                    ),
+                    "Anomalia": anomalia.tipo_anomalia,
+                    "Localização": anomalia.localizacao_referencia,
+                    "Situação": (
+                        observacao.situacao_observada
+                        if observacao is not None
+                        else "Identificada nesta inspeção"
+                    ),
                 }
             )
 
-        st.dataframe(
-            tabela,
-            width="stretch",
-            hide_index=True,
+        st.dataframe(tabela, width="stretch", hide_index=True)
+
+    if dados["fotografias"]:
+        st.markdown("#### Levantamento fotográfico")
+        st.caption(
+            "O PDF técnico incluirá as imagens disponíveis no armazenamento local, "
+            "organizadas em pranchas com duas fotografias por linha."
         )
 
 
-def mostrar_preview_consolidado(
-    dados,
-):
+def mostrar_preview_consolidado(dados):
+    st.subheader("Prévia do relatório consolidado")
 
-    st.subheader(
-        "Prévia do relatório consolidado"
-    )
-
-    c1, c2, c3 = st.columns(
-        3
-    )
+    c1, c2, c3 = st.columns(3)
 
     with c1:
-
-        st.metric(
-            "Inspeções",
-            len(
-                dados[
-                    "inspecoes"
-                ]
-            ),
-        )
+        st.metric("Inspeções", len(dados["inspecoes"]))
 
     with c2:
-
-        st.metric(
-            "Componentes",
-            len(
-                dados[
-                    "componentes"
-                ]
-            ),
-        )
+        st.metric("Componentes", len(dados["componentes"]))
 
     with c3:
-
         st.metric(
             "Anomalias ativas",
-            sum(
-                1
-                for item in dados[
-                    "anomalias"
-                ]
-                if item.ativa
-            ),
+            sum(1 for item in dados["anomalias"] if item.ativa),
         )
 
-    if len(
-        dados["campanhas"]
-    ) > 0:
-
+    if dados["campanhas"]:
         tabela = []
 
-        for campanha in dados[
-            "campanhas"
-        ]:
-
-            inspecao = campanha[
-                "inspecao"
-            ]
-
-            classificacao = campanha[
-                "classificacao"
-            ]
+        for indice, campanha in enumerate(dados["campanhas"], start=1):
+            inspecao = campanha["inspecao"]
+            classificacao = campanha["classificacao"]
 
             tabela.append(
                 {
-                    "Data":
-                        data_br(
-                            inspecao.data_inspecao
-                        ),
-
-                    "Tipo":
-                        inspecao.tipo_inspecao,
-
-                    "Estrutural":
-                        classificacao[
-                            "estrutural"
-                        ],
-
-                    "Funcional":
-                        classificacao[
-                            "funcional"
-                        ],
-
-                    "Durabilidade":
-                        classificacao[
-                            "durabilidade"
-                        ],
-
-                    "Fotos":
-                        campanha[
-                            "quantidade_fotos"
-                        ],
+                    "Inspeção": f"{indice:02d}",
+                    "Data": data_br(inspecao.data_inspecao),
+                    "Tipo": inspecao.tipo_inspecao,
+                    "Estrutural": classificacao_com_condicao(
+                        classificacao["estrutural"]
+                    ),
+                    "Funcional": classificacao_com_condicao(
+                        classificacao["funcional"]
+                    ),
+                    "Durabilidade": classificacao_com_condicao(
+                        classificacao["durabilidade"]
+                    ),
+                    "Anomalias": campanha["quantidade_anomalias"],
+                    "Fotos": campanha["quantidade_fotos"],
                 }
             )
 
-        st.dataframe(
-            tabela,
-            width="stretch",
-            hide_index=True,
-        )
+        st.dataframe(tabela, width="stretch", hide_index=True)
 
 
 # ============================================================
 # MÓDULO PRINCIPAL
 # ============================================================
 
-def mostrar_modulo_relatorios(
-    oae_ativa,
-    inspecao_ativa=None,
-):
-
-    st.header(
-        "📄 Relatórios"
-    )
+def mostrar_modulo_relatorios(oae_ativa, inspecao_ativa=None):
+    st.header("📄 Relatórios")
 
     st.caption(
-        "Relatórios técnicos organizados a partir dos dados "
-        "registrados no Gêmeo Digital."
+        "Relatórios técnicos organizados a partir dos dados registrados no Gêmeo Digital."
     )
 
     st.info(
-        "O relatório reproduz informações existentes no "
-        "banco de dados. O sistema não substitui a análise, "
-        "a validação ou a responsabilidade técnica do "
-        "profissional."
+        "O relatório reproduz informações existentes no banco de dados. "
+        "O sistema não substitui a análise, a validação ou a responsabilidade "
+        "técnica do profissional."
     )
 
     if oae_ativa is None:
-
-        st.warning(
-            "Selecione uma OAE."
-        )
-
+        st.warning("Selecione uma OAE.")
         return
 
     modo = st.radio(
@@ -4708,203 +2293,142 @@ def mostrar_modulo_relatorios(
     )
 
     if modo == "Relatório de uma inspeção":
+        inspecoes_cronologicas = buscar_inspecoes_oae(oae_ativa.id)
 
-        inspecoes = buscar_inspecoes_oae(
-            oae_ativa.id
-        )
-
-        if len(inspecoes) == 0:
-
-            st.warning(
-                "Não existem inspeções cadastradas "
-                "para esta OAE."
-            )
-
+        if len(inspecoes_cronologicas) == 0:
+            st.warning("Não existem inspeções cadastradas para esta OAE.")
             return
 
-        ids = [
-            item.id
-            for item in inspecoes
-        ]
+        # Exibição mais recente primeiro, mas a numeração visual é cronológica.
+        inspecoes_exibicao = list(reversed(inspecoes_cronologicas))
+        ids = [item.id for item in inspecoes_exibicao]
 
         mapa = {
-            item.id:
-                (
-                    f"{item.id} - "
-                    f"{item.tipo_inspecao} - "
-                    f"{data_br(item.data_inspecao)}"
-                )
-            for item in inspecoes
+            item.id: rotulo_inspecao(
+                item,
+                inspecoes_cronologicas,
+            )
+            for item in inspecoes_exibicao
         }
 
         id_padrao = ids[0]
 
-        if (
-            inspecao_ativa is not None
-            and inspecao_ativa.id in ids
-        ):
-
-            id_padrao = (
-                inspecao_ativa.id
-            )
+        if inspecao_ativa is not None and inspecao_ativa.id in ids:
+            id_padrao = inspecao_ativa.id
 
         selecionada_id = st.selectbox(
             "Inspeção",
             options=ids,
-            format_func=lambda valor:
-                mapa[valor],
-            index=ids.index(
-                id_padrao
-            ),
+            format_func=lambda x: mapa[x],
+            index=ids.index(id_padrao),
             key="rel_inspecao_selecionada",
         )
 
-        selecionada = next(
-            item
-            for item in inspecoes
-            if item.id
-            == selecionada_id
+        db = SessionLocal()
+        selecionada = (
+            db.query(models.Inspecao)
+            .filter(models.Inspecao.id == selecionada_id)
+            .first()
         )
+        db.close()
+
+        if selecionada is None:
+            st.error("A inspeção selecionada não foi localizada.")
+            return
 
         dados = montar_relatorio_inspecao(
             oae_ativa,
             selecionada,
         )
 
-        mostrar_preview_inspecao(
-            dados
-        )
-
+        mostrar_preview_inspecao(dados)
         st.divider()
 
-        st.subheader(
-            "Gerar arquivos"
-        )
-
-        html = gerar_html_inspecao(
-            dados
-        )
-
+        html = gerar_html_inspecao(dados)
         nome_base = (
             "relatorio_"
-            + sanitizar_nome_arquivo(
-                oae_ativa.nome
-            )
-            + "_"
-            + sanitizar_nome_arquivo(
-                selecionada.tipo_inspecao
-            )
-            + "_"
-            + selecionada.data_inspecao.strftime(
-                "%Y%m%d"
-            )
+            f"{sanitizar_nome_arquivo(oae_ativa.nome)}_"
+            f"{sanitizar_nome_arquivo(selecionada.tipo_inspecao)}_"
+            f"{selecionada.data_inspecao.strftime('%Y%m%d')}"
         )
 
-        st.download_button(
-            "⬇️ Baixar relatório em HTML",
-            data=html.encode(
-                "utf-8"
-            ),
-            file_name=(
-                nome_base
-                + ".html"
-            ),
-            mime="text/html",
-            key="rel_download_html_inspecao",
-        )
+        col_html, col_pdf = st.columns(2)
 
-        if REPORTLAB_DISPONIVEL:
-
-            pdf = gerar_pdf_inspecao(
-                dados
-            )
-
+        with col_html:
             st.download_button(
-                "⬇️ Baixar relatório em PDF",
-                data=pdf,
-                file_name=(
-                    nome_base
-                    + ".pdf"
-                ),
-                mime="application/pdf",
-                key="rel_download_pdf_inspecao",
+                "⬇️ Baixar relatório HTML",
+                data=html.encode("utf-8"),
+                file_name=f"{nome_base}.html",
+                mime="text/html",
+                use_container_width=True,
             )
 
-        else:
+        with col_pdf:
+            if REPORTLAB_DISPONIVEL:
+                try:
+                    pdf = gerar_pdf_inspecao(dados)
+                except Exception as erro:
+                    pdf = None
+                    st.error(
+                        "Não foi possível gerar o PDF técnico. "
+                        f"Detalhe: {erro}"
+                    )
 
-            st.warning(
-                "Para habilitar a geração de PDF, instale "
-                "a biblioteca ReportLab no ambiente virtual:"
-            )
-
-            st.code(
-                "pip install reportlab"
-            )
+                if pdf is not None:
+                    st.download_button(
+                        "⬇️ Baixar relatório técnico em PDF",
+                        data=pdf,
+                        file_name=f"{nome_base}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+            else:
+                st.warning(
+                    "PDF indisponível. Instale a biblioteca ReportLab: pip install reportlab"
+                )
 
     else:
-
-        dados = montar_relatorio_consolidado(
-            oae_ativa
-        )
-
-        mostrar_preview_consolidado(
-            dados
-        )
-
+        dados = montar_relatorio_consolidado(oae_ativa)
+        mostrar_preview_consolidado(dados)
         st.divider()
 
-        st.subheader(
-            "Gerar arquivos"
-        )
-
-        html = gerar_html_consolidado(
-            dados
-        )
-
+        html = gerar_html_consolidado(dados)
         nome_base = (
             "relatorio_consolidado_"
-            + sanitizar_nome_arquivo(
-                oae_ativa.nome
-            )
+            f"{sanitizar_nome_arquivo(oae_ativa.nome)}"
         )
 
-        st.download_button(
-            "⬇️ Baixar relatório consolidado em HTML",
-            data=html.encode(
-                "utf-8"
-            ),
-            file_name=(
-                nome_base
-                + ".html"
-            ),
-            mime="text/html",
-            key="rel_download_html_consolidado",
-        )
+        col_html, col_pdf = st.columns(2)
 
-        if REPORTLAB_DISPONIVEL:
-
-            pdf = gerar_pdf_consolidado(
-                dados
-            )
-
+        with col_html:
             st.download_button(
-                "⬇️ Baixar relatório consolidado em PDF",
-                data=pdf,
-                file_name=(
-                    nome_base
-                    + ".pdf"
-                ),
-                mime="application/pdf",
-                key="rel_download_pdf_consolidado",
+                "⬇️ Baixar consolidado HTML",
+                data=html.encode("utf-8"),
+                file_name=f"{nome_base}.html",
+                mime="text/html",
+                use_container_width=True,
             )
 
-        else:
+        with col_pdf:
+            if REPORTLAB_DISPONIVEL:
+                try:
+                    pdf = gerar_pdf_consolidado(dados)
+                except Exception as erro:
+                    pdf = None
+                    st.error(
+                        "Não foi possível gerar o PDF consolidado. "
+                        f"Detalhe: {erro}"
+                    )
 
-            st.warning(
-                "Para habilitar a geração de PDF, instale "
-                "a biblioteca ReportLab no ambiente virtual:"
-            )
-
-            st.code(
-                "pip install reportlab"
-            )
+                if pdf is not None:
+                    st.download_button(
+                        "⬇️ Baixar consolidado PDF",
+                        data=pdf,
+                        file_name=f"{nome_base}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+            else:
+                st.warning(
+                    "PDF indisponível. Instale a biblioteca ReportLab: pip install reportlab"
+                )
