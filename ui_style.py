@@ -79,7 +79,15 @@ def aplicar_estilo_global():
             border-right: 1px solid rgba(255,255,255,.08);
         }
 
-        [data-testid="stSidebar"] * {
+        /* Evita aplicar texto branco a TODOS os elementos da sidebar,
+           pois isso deixava o valor do selectbox branco sobre fundo branco. */
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"] [data-testid="stRadio"] {
             color: #F7FAFC;
         }
 
@@ -408,6 +416,27 @@ def aplicar_estilo_global():
         [data-testid="stSidebar"] [data-baseweb="select"]:focus-within > div {
             border-color: #FF6B35 !important;
             box-shadow: 0 0 0 1px #FF6B35 !important;
+        }
+
+
+        /* Selectbox da OAE: fundo branco + texto escuro */
+        [data-testid="stSidebar"] div[data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border: 1px solid #D6DEE5 !important;
+        }
+
+        [data-testid="stSidebar"] div[data-baseweb="select"] > div *,
+        [data-testid="stSidebar"] div[data-baseweb="select"] span,
+        [data-testid="stSidebar"] div[data-baseweb="select"] input {
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+            opacity: 1 !important;
+        }
+
+        [data-testid="stSidebar"] div[data-baseweb="select"] svg {
+            color: #17324A !important;
+            fill: #17324A !important;
+            stroke: #17324A !important;
         }
 
 </style>

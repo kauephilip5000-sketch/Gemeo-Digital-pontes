@@ -1379,10 +1379,14 @@ if pagina == "🏠 Visão geral":
 
     totais = contar_dados_gerais()
 
+    ultima_inspecao_classificada = None
+    notas_ultima_classificada = None
+
     if oae_ativa is None:
         notas = None
         total_componentes = 0
         total_classificados = 0
+
     elif inspecao_referencia is None:
         notas = None
         total_componentes = len(
@@ -1391,6 +1395,7 @@ if pagina == "🏠 Visão geral":
             )
         )
         total_classificados = 0
+
     else:
         total_componentes = len(
             buscar_componentes(
@@ -1410,6 +1415,32 @@ if pagina == "🏠 Visão geral":
             inspecao_referencia.id
         )
 
+        # Procura a inspeção mais recente que efetivamente
+        # possui classificação registrada.
+        for item_inspecao in sorted(
+            buscar_inspecoes(
+                oae_ativa.id
+            ),
+            key=lambda item: (
+                item.data_inspecao,
+                item.id
+            ),
+            reverse=True
+        ):
+            notas_item = calcular_notas_finais(
+                oae_ativa.id,
+                item_inspecao.id
+            )
+
+            if notas_item is not None:
+                ultima_inspecao_classificada = (
+                    item_inspecao
+                )
+                notas_ultima_classificada = (
+                    notas_item
+                )
+                break
+
     mostrar_topo_visao_geral(
         oae_ativa=oae_ativa,
         inspecao_referencia=inspecao_referencia,
@@ -1418,6 +1449,12 @@ if pagina == "🏠 Visão geral":
         total_componentes=total_componentes,
         total_classificados=total_classificados,
         nota_texto_fn=nota_texto,
+        ultima_inspecao_classificada=(
+            ultima_inspecao_classificada
+        ),
+        notas_ultima_classificada=(
+            notas_ultima_classificada
+        ),
     )
 
     if oae_ativa is not None:
@@ -1451,7 +1488,13 @@ if pagina == "🏠 Visão geral":
         with esquerda:
 
             st.subheader(
-                "⚠️ Anomalias por componente"
+                "⚠️ Anomalias ativas da OAE por componente"
+            )
+
+            st.caption(
+                "Distribuição das anomalias permanentes ativas "
+                "acompanhadas no histórico da OAE, independentemente "
+                "da inspeção em que foram originalmente identificadas."
             )
 
             dados_anomalias = (
@@ -1466,11 +1509,11 @@ if pagina == "🏠 Visão geral":
 
         with direita:
 
-            st.subheader(
-                "📋 Resumo da inspeção mais recente"
-            )
-
             if inspecao_referencia is None:
+
+                st.subheader(
+                    "📋 Registros da inspeção mais recente"
+                )
 
                 st.info(
                     "Nenhuma inspeção cadastrada."
@@ -1478,27 +1521,47 @@ if pagina == "🏠 Visão geral":
 
             else:
 
+                data_resumo = (
+                    inspecao_referencia
+                    .data_inspecao
+                    .strftime("%d/%m/%Y")
+                )
+
+                tipo_resumo = (
+                    inspecao_referencia.tipo_inspecao
+                    or "Inspeção"
+                )
+
+                st.subheader(
+                    "📋 Registros da inspeção mais recente"
+                )
+
+                st.caption(
+                    f"{tipo_resumo} • {data_resumo} — "
+                    "valores referentes somente a esta campanha."
+                )
+
                 resumo = contar_dados_inspecao(
                     oae_ativa.id,
                     inspecao_referencia.id
                 )
 
                 st.metric(
-                    "⭐ Componentes classificados",
+                    "⭐ Componentes classificados nesta inspeção",
                     resumo[
                         "componentes_classificados"
                     ]
                 )
 
                 st.metric(
-                    "⚠️ Anomalias observadas",
+                    "⚠️ Anomalias observadas nesta inspeção",
                     resumo[
                         "anomalias_observadas"
                     ]
                 )
 
                 st.metric(
-                    "📷 Fotografias",
+                    "📷 Fotografias desta inspeção",
                     resumo[
                         "fotografias"
                     ]
