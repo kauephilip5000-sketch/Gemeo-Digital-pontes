@@ -27,6 +27,220 @@ OPCOES_NOTAS = [
 ]
 
 
+# ============================================================
+# APOIO À CLASSIFICAÇÃO — ABNT NBR 9452:2023
+# Seção 5.2, Tabela 1
+# ============================================================
+
+CRITERIOS_CLASSIFICACAO = [
+    {
+        "nota": 5,
+        "condicao": "Excelente",
+        "estrutural": "A estrutura se encontra em condições satisfatórias, apresentando defeitos irrelevantes e isolados.",
+        "funcional": "A OAE apresenta segurança e conforto aos usuários.",
+        "durabilidade": "A OAE se encontra em condições satisfatórias, apresentando defeitos irrelevantes e isolados.",
+    },
+    {
+        "nota": 4,
+        "condicao": "Boa",
+        "estrutural": "A estrutura apresenta danos de baixa gravidade, localizados e em pequenas áreas, sem comprometer a segurança estrutural.",
+        "funcional": "A OAE apresenta pequenos danos que não chegam a causar desconforto ou insegurança ao usuário.",
+        "durabilidade": "A OAE apresenta pequenas e poucas anomalias, que não comprometem sua vida útil, em região de baixa agressividade ambiental.",
+    },
+    {
+        "nota": 3,
+        "condicao": "Regular",
+        "estrutural": "Há danos que podem vir a gerar alguma deficiência estrutural, mas não há sinais de comprometimento da estabilidade da obra. Recomenda-se acompanhamento dos problemas.",
+        "funcional": "A OAE apresenta desconforto ao usuário, com defeitos que requerem ações.",
+        "durabilidade": "A OAE apresenta anomalias de moderada gravidade, que comprometem sua vida útil, em região de moderada a alta agressividade ambiental; ou apresenta de moderadas a muitas anomalias, que comprometem sua vida útil, em região de baixa agressividade ambiental.",
+    },
+    {
+        "nota": 2,
+        "condicao": "Ruim",
+        "estrutural": "Há danos comprometendo a segurança estrutural da OAE sem aparente risco iminente de colapso. Sua evolução pode levar ao colapso estrutural. A OAE necessita de intervenções significativas.",
+        "funcional": "A OAE possui funcionalidade visivelmente comprometida, com riscos de segurança ao usuário.",
+        "durabilidade": "A OAE apresenta de moderadas a muitas anomalias, que comprometem sua vida útil, em região de alta agressividade ambiental; ou apresenta muitas anomalias, que comprometem sua vida útil, em região de baixa agressividade ambiental.",
+    },
+    {
+        "nota": 1,
+        "condicao": "Crítica",
+        "estrutural": "Há danos gerando grave insuficiência estrutural na OAE. Há elementos estruturais em estado crítico, com risco tangível de colapso estrutural localizado. A OAE necessita de intervenção imediata, podendo ser necessária restrição de carga, interdição parcial, escoramento provisório, instrumentação, associadas ou não.",
+        "funcional": "A OAE apresenta condições funcionais limitadas de utilização em regiões localizadas.",
+        "durabilidade": "A OAE se encontra em elevado grau de deterioração em regiões localizadas, apontando problema já de risco estrutural e/ou funcional, requerendo intervenção imediata, podendo ser necessárias restrição de carga e interdição parcial ao tráfego.",
+    },
+    {
+        "nota": 0,
+        "condicao": "Emergencial",
+        "estrutural": "Há elementos estruturais principais colapsados, evoluindo para instabilidade da estrutura. É necessária a interdição total, até que haja avaliação e reclassificação por consultoria especializada ou intervenção.",
+        "funcional": "A OAE não apresenta condições funcionais de utilização. A OAE deve ser interditada.",
+        "durabilidade": "A OAE se encontra em elevado grau de deterioração, gerando grave insuficiência estrutural e/ou funcional, requerendo intervenção emergencial e interdição total.",
+    },
+]
+
+
+def mostrar_resumo_escala():
+    """
+    Exibe a escala 5 a 0 em cartões compactos e coloridos.
+    """
+
+    st.markdown(
+        "#### 📘 Escala de classificação"
+    )
+
+    st.caption(
+        "Resumo da escala. Consulte a aba "
+        "**Tabela 1 – NBR 9452:2023** para os critérios completos."
+    )
+
+    st.markdown(
+        """
+        <style>
+        .escala-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 10px;
+            margin: 10px 0 16px 0;
+        }
+
+        .escala-card {
+            border-radius: 12px;
+            padding: 12px 8px;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        }
+
+        .escala-card .nota {
+            font-size: 1.35rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        .escala-card .condicao {
+            font-size: 0.84rem;
+            font-weight: 700;
+        }
+
+        .nota-5 {
+            background: #EAF7EF;
+            color: #1F6B3A;
+            border-color: #B9DEC6;
+        }
+
+        .nota-4 {
+            background: #F2F8E8;
+            color: #527224;
+            border-color: #D5E5AF;
+        }
+
+        .nota-3 {
+            background: #FFF7D6;
+            color: #7A5A00;
+            border-color: #EEDB87;
+        }
+
+        .nota-2 {
+            background: #FFF0D9;
+            color: #915A00;
+            border-color: #EFC990;
+        }
+
+        .nota-1 {
+            background: #FDE7E4;
+            color: #A13B32;
+            border-color: #E8B2AC;
+        }
+
+        .nota-0 {
+            background: #F6DADB;
+            color: #8E2025;
+            border-color: #DFA3A6;
+        }
+
+        @media (max-width: 900px) {
+            .escala-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+        </style>
+
+        <div class="escala-grid">
+            <div class="escala-card nota-5">
+                <div class="nota">5</div>
+                <div class="condicao">Excelente</div>
+            </div>
+            <div class="escala-card nota-4">
+                <div class="nota">4</div>
+                <div class="condicao">Boa</div>
+            </div>
+            <div class="escala-card nota-3">
+                <div class="nota">3</div>
+                <div class="condicao">Regular</div>
+            </div>
+            <div class="escala-card nota-2">
+                <div class="nota">2</div>
+                <div class="condicao">Ruim</div>
+            </div>
+            <div class="escala-card nota-1">
+                <div class="nota">1</div>
+                <div class="condicao">Crítica</div>
+            </div>
+            <div class="escala-card nota-0">
+                <div class="nota">0</div>
+                <div class="condicao">Emergencial</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def mostrar_tabela_nbr_completa():
+    st.subheader("📚 Tabela 1 – Classificação da condição da OAE")
+    st.caption("ABNT NBR 9452:2023, Seção 5.2, Tabela 1.")
+
+    st.info(
+        "Esta referência serve como apoio à atribuição das notas. "
+        "A classificação técnica permanece sob responsabilidade "
+        "do profissional responsável."
+    )
+
+    for item in CRITERIOS_CLASSIFICACAO:
+
+        with st.container(border=True):
+
+            cab1, cab2 = st.columns([0.22, 0.78], vertical_alignment="center")
+
+            with cab1:
+                st.metric(
+                    "Classificação",
+                    f"{item['nota']} - {item['condicao']}"
+                )
+
+            with cab2:
+                st.caption(
+                    "Critérios de caracterização da condição da OAE."
+                )
+
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+                st.markdown("**Caracterização estrutural**")
+                st.write(item["estrutural"])
+
+            with c2:
+                st.markdown("**Caracterização funcional**")
+                st.write(item["funcional"])
+
+            with c3:
+                st.markdown("**Caracterização de durabilidade**")
+                st.write(item["durabilidade"])
+
+    st.caption(
+        "Fonte: ABNT NBR 9452:2023, Seção 5.2, Tabela 1."
+    )
+
+
 def nota_texto(nota):
     if nota is None:
         return "Não classificada"
@@ -894,6 +1108,8 @@ def mostrar_classificacao_geral(
         "e validação das notas não são realizadas automaticamente."
     )
 
+    mostrar_resumo_escala()
+
     with st.form(
         f"form_classificacao_oae_"
         f"{inspecao_ativa.id}"
@@ -1242,6 +1458,8 @@ def mostrar_classificacao_especial(
         f"{componente_ativo.nome}"
     )
 
+    mostrar_resumo_escala()
+
     with st.form(
         f"form_classificacao_especial_"
         f"{inspecao_ativa.id}_"
@@ -1561,19 +1779,32 @@ def mostrar_modulo_classificacao(
 
     st.divider()
 
-    if eh_inspecao_especial(
-        inspecao_ativa
-    ):
+    aba_registro, aba_tabela = st.tabs(
+        [
+            "📝 Registro da classificação",
+            "📚 Tabela 1 – NBR 9452:2023",
+        ]
+    )
 
-        mostrar_classificacao_especial(
-            oae_ativa,
-            inspecao_ativa,
-            componente_ativo,
-        )
+    with aba_registro:
 
-    else:
+        if eh_inspecao_especial(
+            inspecao_ativa
+        ):
 
-        mostrar_classificacao_geral(
-            oae_ativa,
-            inspecao_ativa,
-        )
+            mostrar_classificacao_especial(
+                oae_ativa,
+                inspecao_ativa,
+                componente_ativo,
+            )
+
+        else:
+
+            mostrar_classificacao_geral(
+                oae_ativa,
+                inspecao_ativa,
+            )
+
+    with aba_tabela:
+
+        mostrar_tabela_nbr_completa()

@@ -268,23 +268,58 @@ def criar_grafico_temporal(
     campo_valor,
     titulo_eixo_y
 ):
+    """
+    Gráfico temporal compacto para o módulo de evolução.
+
+    Exibe no eixo X apenas as datas efetivamente registradas nas
+    inspeções, evitando datas intermediárias sem observação.
+    """
+
+    dataframe = (
+        dataframe
+        .sort_values("Data")
+        .copy()
+    )
+
+    # Garante que a coluna Data seja realmente do tipo datetime
+    # antes de usar o accessor .dt do pandas.
+    dataframe["Data"] = pd.to_datetime(
+        dataframe["Data"],
+        errors="coerce"
+    )
+
+    dataframe = (
+        dataframe
+        .dropna(subset=["Data"])
+        .sort_values("Data")
+    )
 
     grafico = (
         alt.Chart(
             dataframe
         )
         .mark_line(
-            point=True
+            point=alt.OverlayMarkDef(
+                size=70,
+                filled=True
+            ),
+            strokeWidth=2
         )
         .encode(
-
             x=alt.X(
                 "Data:T",
                 title="Data da inspeção",
                 sort="ascending",
                 axis=alt.Axis(
+                    values=(
+                        dataframe["Data"]
+                        .dt.to_pydatetime()
+                        .tolist()
+                    ),
                     format="%d/%m/%Y",
-                    labelAngle=0
+                    labelAngle=0,
+                    labelPadding=8,
+                    grid=False
                 )
             ),
 
@@ -310,7 +345,7 @@ def criar_grafico_temporal(
             ]
         )
         .properties(
-            height=320
+            height=235
         )
     )
 
@@ -871,10 +906,15 @@ def mostrar_evolucao_anomalias(
                 )
 
 
-                st.altair_chart(
-                    grafico_abertura,
-                    width="stretch"
+                margem_esq, coluna_grafico, margem_dir = st.columns(
+                    [0.08, 0.84, 0.08]
                 )
+
+                with coluna_grafico:
+                    st.altair_chart(
+                        grafico_abertura,
+                        width="stretch"
+                    )
 
 
             # =================================================
@@ -939,10 +979,15 @@ def mostrar_evolucao_anomalias(
                 )
 
 
-                st.altair_chart(
-                    grafico_extensao,
-                    width="stretch"
+                margem_esq, coluna_grafico, margem_dir = st.columns(
+                    [0.08, 0.84, 0.08]
                 )
+
+                with coluna_grafico:
+                    st.altair_chart(
+                        grafico_extensao,
+                        width="stretch"
+                    )
 
 
             # =================================================
