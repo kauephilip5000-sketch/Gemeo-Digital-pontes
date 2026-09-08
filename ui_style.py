@@ -562,6 +562,157 @@ def aplicar_estilo_global():
             font-weight: 500 !important;
         }
 
+
+
+        /* =====================================================
+           INSPEÇÕES — CONTRASTE REFORÇADO PARA TODOS OS CAMPOS
+           ===================================================== */
+
+        /* Campo de data */
+        [data-testid="stMain"] [data-testid="stDateInput"] div[data-baseweb="input"] > div,
+        [data-testid="stMainBlockContainer"] [data-testid="stDateInput"] div[data-baseweb="input"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #BFCBD6 !important;
+            border-radius: 10px !important;
+        }
+
+        [data-testid="stMain"] [data-testid="stDateInput"] input,
+        [data-testid="stMainBlockContainer"] [data-testid="stDateInput"] input {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+        }
+
+        /* Inputs de texto — força fundo branco inclusive quando
+           o módulo usa wrappers diferentes do BaseWeb */
+        [data-testid="stMain"] [data-testid="stTextInput"] input,
+        [data-testid="stMainBlockContainer"] [data-testid="stTextInput"] input {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+            border-radius: 9px !important;
+        }
+
+        /* Textarea */
+        [data-testid="stMain"] [data-testid="stTextArea"] textarea,
+        [data-testid="stMainBlockContainer"] [data-testid="stTextArea"] textarea {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+            border-radius: 9px !important;
+        }
+
+        /* Selectbox — reforço na área principal */
+        [data-testid="stMain"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        [data-testid="stMainBlockContainer"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #BFCBD6 !important;
+            border-radius: 10px !important;
+        }
+
+        [data-testid="stMain"] [data-testid="stSelectbox"] div[data-baseweb="select"] *,
+        [data-testid="stMainBlockContainer"] [data-testid="stSelectbox"] div[data-baseweb="select"] * {
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+        }
+
+        /* Number input */
+        [data-testid="stMain"] [data-testid="stNumberInput"] input,
+        [data-testid="stMainBlockContainer"] [data-testid="stNumberInput"] input {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+        }
+
+        /* File uploader */
+        [data-testid="stMain"] [data-testid="stFileUploader"] section,
+        [data-testid="stMainBlockContainer"] [data-testid="stFileUploader"] section {
+            background: #FFFFFF !important;
+            border-color: #BFCBD6 !important;
+        }
+
+        /* Foco visual mais evidente */
+        [data-testid="stMain"] [data-testid="stTextInput"]:focus-within,
+        [data-testid="stMain"] [data-testid="stTextArea"]:focus-within,
+        [data-testid="stMain"] [data-testid="stDateInput"]:focus-within,
+        [data-testid="stMain"] [data-testid="stSelectbox"]:focus-within,
+        [data-testid="stMain"] [data-testid="stNumberInput"]:focus-within {
+            outline: none !important;
+        }
+
+        [data-testid="stMain"] [data-testid="stTextInput"] div[data-baseweb="input"] > div:focus-within,
+        [data-testid="stMain"] [data-testid="stDateInput"] div[data-baseweb="input"] > div:focus-within,
+        [data-testid="stMain"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within,
+        [data-testid="stMain"] [data-testid="stNumberInput"] div[data-baseweb="input"] > div:focus-within {
+            border-color: #FF6B35 !important;
+            box-shadow: 0 0 0 2px rgba(255,107,53,.14) !important;
+        }
+
+
+
+        /* =====================================================
+           ANOMALIAS / SELECTBOXES — CONTRASTE REFORÇADO
+           ===================================================== */
+
+        /* Alguns módulos renderizam o selectbox com estrutura
+           interna diferente. Estas regras atingem diretamente
+           o controle visível e o combobox. */
+        [data-testid="stMain"] [data-testid="stSelectbox"] div[role="combobox"],
+        [data-testid="stMainBlockContainer"] [data-testid="stSelectbox"] div[role="combobox"],
+        [data-testid="stMain"] [data-baseweb="select"] div[role="combobox"],
+        [data-testid="stMainBlockContainer"] [data-baseweb="select"] div[role="combobox"] {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+            border-radius: 10px !important;
+        }
+
+        /* Wrapper do select */
+        [data-testid="stMain"] [data-baseweb="select"] > div,
+        [data-testid="stMainBlockContainer"] [data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #BFCBD6 !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(11,60,93,.04) !important;
+        }
+
+        /* Texto e seta do select */
+        [data-testid="stMain"] [data-baseweb="select"] > div *,
+        [data-testid="stMainBlockContainer"] [data-baseweb="select"] > div * {
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+        }
+
+        [data-testid="stMain"] [data-baseweb="select"] svg,
+        [data-testid="stMainBlockContainer"] [data-baseweb="select"] svg {
+            color: #17324A !important;
+            fill: #17324A !important;
+            stroke: #17324A !important;
+        }
+
+        /* Foco do select */
+        [data-testid="stMain"] [data-baseweb="select"]:focus-within > div,
+        [data-testid="stMainBlockContainer"] [data-baseweb="select"]:focus-within > div {
+            border-color: #FF6B35 !important;
+            box-shadow: 0 0 0 2px rgba(255,107,53,.14) !important;
+        }
+
+        /* Mantém os campos numéricos claramente separados do fundo */
+        [data-testid="stMain"] [data-testid="stNumberInput"] div[data-baseweb="input"] > div,
+        [data-testid="stMainBlockContainer"] [data-testid="stNumberInput"] div[data-baseweb="input"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #BFCBD6 !important;
+            border-radius: 10px !important;
+        }
+
+        /* Áreas de texto longas */
+        [data-testid="stMain"] [data-testid="stTextArea"] div[data-baseweb="textarea"] > div,
+        [data-testid="stMainBlockContainer"] [data-testid="stTextArea"] div[data-baseweb="textarea"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #BFCBD6 !important;
+            border-radius: 10px !important;
+        }
+
 </style>
         """,
         unsafe_allow_html=True,

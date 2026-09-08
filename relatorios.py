@@ -2539,94 +2539,356 @@ def gerar_pdf_consolidado(dados):
 # PRÉVIAS NO STREAMLIT
 # ============================================================
 
+def mostrar_cards_classificacao_preview(classificacao):
+    """
+    Exibe as três notas da classificação com o mesmo padrão
+    semântico de cores usado no módulo de Classificação.
+    """
+
+    cores = {
+        5: ("#E7F6EC", "#17643A", "#A9D6B8"),
+        4: ("#EEF7E4", "#4E6F22", "#CFE2A7"),
+        3: ("#FFF6D8", "#765600", "#E8D37E"),
+        2: ("#FFF0DD", "#8C5000", "#EDC38B"),
+        1: ("#FCE5E2", "#9C332B", "#E5ADA7"),
+        0: ("#F4D6D8", "#841D24", "#D99BA0"),
+    }
+
+    def nome_condicao(nota):
+        mapa = {
+            5: "Excelente",
+            4: "Boa",
+            3: "Regular",
+            2: "Ruim",
+            1: "Crítica",
+            0: "Emergencial",
+        }
+        return mapa.get(nota, "Não classificada")
+
+    itens = [
+        ("Estrutural", classificacao.get("estrutural")),
+        ("Funcional", classificacao.get("funcional")),
+        ("Durabilidade", classificacao.get("durabilidade")),
+    ]
+
+    colunas = st.columns(3)
+
+    for coluna, (rotulo, nota) in zip(colunas, itens):
+        with coluna:
+
+            if nota is None:
+                valor = "NA" if rotulo == "Funcional" else "—"
+                condicao = (
+                    "Não aplicável"
+                    if rotulo == "Funcional"
+                    else "Não classificada"
+                )
+                fundo = "#EFF3F6"
+                texto_cor = "#53616E"
+                borda = "#D7DFE5"
+
+            else:
+                nota = int(nota)
+                valor = str(nota)
+                condicao = nome_condicao(nota)
+                fundo, texto_cor, borda = cores.get(
+                    nota,
+                    ("#EFF3F6", "#53616E", "#D7DFE5")
+                )
+
+            st.markdown(
+                f"""
+                <div style="
+                    background:{fundo};
+                    color:{texto_cor};
+                    border:1px solid {borda};
+                    border-radius:14px;
+                    padding:16px 18px;
+                    min-height:118px;
+                ">
+                    <div style="
+                        font-size:.78rem;
+                        font-weight:700;
+                        text-transform:uppercase;
+                        letter-spacing:.04em;
+                        opacity:.78;
+                    ">
+                        {rotulo}
+                    </div>
+                    <div style="
+                        font-size:1.75rem;
+                        font-weight:800;
+                        line-height:1;
+                        margin:8px 0 5px;
+                    ">
+                        {valor}
+                    </div>
+                    <div style="
+                        font-size:.92rem;
+                        font-weight:700;
+                    ">
+                        {condicao}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
 def mostrar_preview_inspecao(dados):
+    """
+    Prévia resumida e organizada do relatório de uma inspeção.
+
+    A prévia da interface não tenta reproduzir todas as páginas do PDF.
+    Ela apresenta apenas as informações essenciais para conferência
+    antes da geração do documento.
+    """
+
     oae = dados["oae"]
     inspecao = dados["inspecao"]
     classificacao = dados["classificacao_geral"]
 
-    st.subheader("Prévia técnica do relatório")
+    st.markdown("### Prévia técnica")
 
-    c1, c2, c3, c4 = st.columns(4)
+    # ========================================================
+    # IDENTIFICAÇÃO DA CAMPANHA
+    # ========================================================
 
-    with c1:
-        st.metric("Inspeção", inspecao.tipo_inspecao)
+    with st.container(border=True):
 
-    with c2:
-        st.metric("Anomalias relacionadas", len(dados["anomalias"]))
+        st.markdown(
+            f"#### {inspecao.tipo_inspecao} • "
+            f"{data_br(inspecao.data_inspecao)}"
+        )
 
-    with c3:
-        st.metric("Fotografias", len(dados["fotografias"]))
+        c1, c2 = st.columns(2)
 
-    with c4:
-        if eh_inspecao_especial(inspecao):
+        with c1:
+            st.markdown("**OAE**")
+            st.write(
+                nome_oae_exibicao(oae)
+            )
+
+        with c2:
+            st.markdown("**Responsável técnico**")
+            st.write(
+                texto(inspecao.responsavel)
+            )
+
+    # ========================================================
+    # RESUMO DO CONTEÚDO
+    # ========================================================
+
+    st.markdown("#### Resumo do relatório")
+
+    if eh_inspecao_especial(inspecao):
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.metric(
+                "Anomalias relacionadas",
+                len(dados["anomalias"]),
+            )
+
+        with c2:
+            st.metric(
+                "Fotografias",
+                len(dados["fotografias"]),
+            )
+
+        with c3:
             st.metric(
                 "Componentes classificados",
-                len(dados["classificacoes_componentes"]),
+                len(
+                    dados[
+                        "classificacoes_componentes"
+                    ]
+                ),
             )
-        else:
+
+    else:
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.metric(
+                "Anomalias relacionadas",
+                len(dados["anomalias"]),
+            )
+
+        with c2:
+            st.metric(
+                "Fotografias",
+                len(dados["fotografias"]),
+            )
+
+        with c3:
+            classificacao_concluida = (
+                dados["classificacao_direta"]
+                is not None
+            )
+
             st.metric(
                 "Classificação da OAE",
-                "Concluída" if dados["classificacao_direta"] is not None else "Pendente",
+                (
+                    "Concluída"
+                    if classificacao_concluida
+                    else "Pendente"
+                ),
             )
 
-    st.write(f"**OAE:** {nome_oae_exibicao(oae)}")
-    st.write(f"**Data:** {data_br(inspecao.data_inspecao)}")
-    st.write(f"**Responsável:** {texto(inspecao.responsavel)}")
+    # ========================================================
+    # CLASSIFICAÇÃO
+    # ========================================================
 
     st.markdown("#### Classificação da condição")
-    col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            "Estrutural",
-            classificacao_com_condicao(classificacao["estrutural"]),
-        )
+    mostrar_cards_classificacao_preview(
+        classificacao
+    )
 
-    with col2:
-        st.metric(
-            "Funcional",
-            classificacao_com_condicao(classificacao["funcional"]),
-        )
-
-    with col3:
-        st.metric(
-            "Durabilidade",
-            classificacao_com_condicao(classificacao["durabilidade"]),
-        )
+    # ========================================================
+    # ANOMALIAS
+    # ========================================================
 
     if dados["anomalias"]:
+
         st.markdown("#### Anomalias da campanha")
+
+        st.caption(
+            "Resumo das manifestações relacionadas à inspeção. "
+            "As localizações completas podem ser consultadas logo abaixo."
+        )
+
         componentes = dados["componentes"]
         tabela = []
+        localizacoes = []
 
-        for indice, (anomalia, observacao) in enumerate(dados["anomalias"], start=1):
-            componente = componentes.get(anomalia.componente_id)
+        for indice, (
+            anomalia,
+            observacao
+        ) in enumerate(
+            dados["anomalias"],
+            start=1
+        ):
+
+            componente = componentes.get(
+                anomalia.componente_id
+            )
+
+            referencia = (
+                f"AN-{indice:02d}"
+            )
+
+            nome_componente = (
+                limpar_nome_componente(
+                    componente.nome
+                    if componente
+                    else None
+                )
+            )
+
+            situacao = (
+                observacao.situacao_observada
+                if observacao is not None
+                else "Identificada nesta inspeção"
+            )
+
             tabela.append(
                 {
-                    "Ref.": f"AN-{indice:02d}",
-                    "Componente": limpar_nome_componente(
-                        componente.nome if componente else None
-                    ),
-                    "Anomalia": anomalia.tipo_anomalia,
-                    "Localização": anomalia.localizacao_referencia,
-                    "Situação": (
-                        observacao.situacao_observada
-                        if observacao is not None
-                        else "Identificada nesta inspeção"
-                    ),
+                    "Ref.": referencia,
+                    "Componente": nome_componente,
+                    "Anomalia":
+                        anomalia.tipo_anomalia,
+                    "Situação": situacao,
                 }
             )
 
-        st.dataframe(tabela, width="stretch", hide_index=True)
+            localizacoes.append(
+                {
+                    "ref": referencia,
+                    "componente": nome_componente,
+                    "anomalia":
+                        anomalia.tipo_anomalia,
+                    "localizacao":
+                        anomalia.localizacao_referencia,
+                }
+            )
 
-    if dados["fotografias"]:
-        st.markdown("#### Levantamento fotográfico")
-        st.caption(
-            "O PDF técnico incluirá as imagens disponíveis no armazenamento local, "
-            "organizadas em pranchas com duas fotografias por linha, separadas em "
-            "'vista geral' e 'evidências de anomalias'."
+        st.dataframe(
+            tabela,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Ref.": st.column_config.TextColumn(
+                    "Ref.",
+                    width="small",
+                ),
+                "Componente":
+                    st.column_config.TextColumn(
+                        "Componente",
+                        width="medium",
+                    ),
+                "Anomalia":
+                    st.column_config.TextColumn(
+                        "Anomalia",
+                        width="medium",
+                    ),
+                "Situação":
+                    st.column_config.TextColumn(
+                        "Situação",
+                        width="medium",
+                    ),
+            },
         )
 
+        with st.expander(
+            "📍 Ver localização completa das anomalias",
+            expanded=False,
+        ):
+
+            for item in localizacoes:
+
+                st.markdown(
+                    f"**{item['ref']} • "
+                    f"{item['componente']}**"
+                )
+
+                st.write(
+                    item["anomalia"]
+                )
+
+                st.caption(
+                    item["localizacao"]
+                    or
+                    "Localização não informada."
+                )
+
+                st.divider()
+
+    else:
+
+        st.info(
+            "Nenhuma anomalia relacionada a esta campanha."
+        )
+
+    # ========================================================
+    # LEVANTAMENTO FOTOGRÁFICO
+    # ========================================================
+
+    if dados["fotografias"]:
+
+        st.markdown("#### Levantamento fotográfico")
+
+        st.info(
+            f"{len(dados['fotografias'])} fotografia(s) "
+            "será(ão) incluída(s) no PDF técnico, organizadas "
+            "em pranchas e separadas por tipo de registro."
+        )
+
+    else:
+
+        st.warning(
+            "Nenhuma fotografia está vinculada a esta campanha."
+        )
 
 def mostrar_preview_consolidado(dados):
     st.subheader("Prévia do relatório consolidado")

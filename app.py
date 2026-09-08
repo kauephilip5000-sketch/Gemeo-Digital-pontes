@@ -989,13 +989,13 @@ def rotulo_inspecao_contextual(inspecao, inspecoes):
     )
 
     prefixo = (
-        f"Inspeção {numero:02d} • "
+        f"Inspeção {numero:02d} - "
         if numero is not None
-        else ""
+        else "Inspeção - "
     )
 
     return (
-        f"{prefixo}{inspecao.tipo_inspecao} • "
+        f"{prefixo}({inspecao.tipo_inspecao}) - "
         f"{inspecao.data_inspecao.strftime('%d/%m/%Y')}"
     )
 
@@ -2361,11 +2361,60 @@ elif pagina == "🧱 Componentes":
                         }
                     )
 
+                # Tabela principal mais limpa e legível.
+                # As observações completas ficam logo abaixo, evitando
+                # que a coluna longa deixe todo o quadro espremido.
+                dados_tabela = [
+                    {
+                        "Nº": item["Nº"],
+                        "Categoria": item["Categoria"],
+                        "Elemento": item["Elemento"],
+                        "Relevância": item["Relevância"],
+                    }
+                    for item in dados
+                ]
+
                 st.dataframe(
-                    dados,
+                    dados_tabela,
                     width="stretch",
-                    hide_index=True
+                    hide_index=True,
+                    column_config={
+                        "Nº": st.column_config.NumberColumn(
+                            "Nº",
+                            width="small",
+                        ),
+                        "Categoria": st.column_config.TextColumn(
+                            "Categoria",
+                            width="medium",
+                        ),
+                        "Elemento": st.column_config.TextColumn(
+                            "Elemento",
+                            width="medium",
+                        ),
+                        "Relevância": st.column_config.TextColumn(
+                            "Relevância",
+                            width="small",
+                        ),
+                    },
                 )
+
+                with st.expander(
+                    "📝 Ver observações completas dos componentes",
+                    expanded=False,
+                ):
+                    for item in dados:
+                        st.markdown(
+                            f"**{item['Nº']:02d} • {item['Elemento']}**"
+                        )
+                        st.caption(
+                            f"{item['Categoria']} • "
+                            f"{item['Relevância']}"
+                        )
+                        st.write(
+                            item["Observações"]
+                            or "Sem observações cadastradas."
+                        )
+                        st.divider()
 
                 st.caption(
                     "Os componentes são organizados automaticamente "
