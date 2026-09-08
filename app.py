@@ -27,6 +27,15 @@ from classificacao import (
     nota_texto
 )
 
+from ui_style import (
+    aplicar_estilo_global,
+    renderizar_marca_sidebar,
+    renderizar_marca_pagina,
+)
+from visao_geral_profissional import (
+    mostrar_topo_visao_geral,
+)
+
 
 # ============================================================
 # NOMENCLATURA VISUAL
@@ -56,9 +65,12 @@ def limpar_nome_componente_visual(valor):
 
 st.set_page_config(
     page_title="Gêmeo Digital - Pontes",
-    page_icon="🌉",
-    layout="wide"
+    page_icon="assets/page_icon.png",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+aplicar_estilo_global()
 
 # Feedback visual global para qualquer salvamento no banco.
 ativar_feedback_global()
@@ -1210,13 +1222,7 @@ componente_ativo = None
 
 with st.sidebar:
 
-    st.title(
-        "🌉 Gêmeo Digital"
-    )
-
-    st.caption(
-        "Inspeção e acompanhamento de OAEs"
-    )
+    renderizar_marca_sidebar()
 
     st.divider()
 
@@ -1346,73 +1352,23 @@ with st.sidebar:
 
 
 # ============================================================
-# CABEÇALHO
-# ============================================================
-
-st.title(
-    "🌉 Gêmeo Digital para Inspeção de Pontes"
-)
-
-st.caption(
-    "Sistema de apoio à inspeção, diagnóstico "
-    "e acompanhamento temporal de OAEs"
-)
-
-
-# ============================================================
-# CONTEXTO SUPERIOR
+# CABEÇALHO / CONTEXTO SUPERIOR
 # ============================================================
 
 if oae_ativa is not None:
-
-    with st.container(
-        border=True
-    ):
-
-        st.markdown(
-            f"**🌉 {oae_ativa.nome}**"
-        )
-
-        detalhes_contexto = []
-
-        if oae_ativa.codigo:
-            detalhes_contexto.append(
-                oae_ativa.codigo
-            )
-
-        if oae_ativa.rodovia:
-            detalhes_contexto.append(
-                oae_ativa.rodovia
-            )
-
-        localizacao_contexto = " / ".join(
-            valor
-            for valor in [
-                oae_ativa.municipio,
-                oae_ativa.uf
-            ]
-            if valor
-        )
-
-        if localizacao_contexto:
-            detalhes_contexto.append(
-                localizacao_contexto
-            )
-
-        if detalhes_contexto:
-            st.caption(
-                " • ".join(detalhes_contexto)
-            )
-
     inspecao_referencia = (
         buscar_inspecao_mais_recente(
             oae_ativa.id
         )
     )
-
 else:
-
     inspecao_referencia = None
+
+
+# A Visão geral usa um hero próprio. Nas demais páginas,
+# mantém-se apenas uma assinatura visual compacta.
+if pagina != "🏠 Visão geral":
+    renderizar_marca_pagina()
 
 
 # ============================================================
@@ -1421,342 +1377,50 @@ else:
 
 if pagina == "🏠 Visão geral":
 
-    st.header(
-        "Painel geral"
-    )
-
-    st.caption(
-        "Resumo dos dados cadastrados e da condição "
-        "da OAE atualmente selecionada."
-    )
-
     totais = contar_dados_gerais()
 
-    c1, c2, c3, c4 = (
-        st.columns(4)
-    )
-
-    with c1:
-
-        st.metric(
-            "🌉 OAEs cadastradas",
-            totais["oaes"]
-        )
-
-    with c2:
-
-        st.metric(
-            "📋 Inspeções",
-            totais["inspecoes"]
-        )
-
-    with c3:
-
-        st.metric(
-            "⚠️ Anomalias acompanhadas",
-            totais["anomalias"]
-        )
-
-    with c4:
-
-        st.metric(
-            "📷 Fotografias",
-            totais["fotografias"]
-        )
-
-    st.divider()
-
     if oae_ativa is None:
-
-        st.warning(
-            "Nenhuma OAE cadastrada."
-        )
-
-    else:
-
-        st.subheader(
-            f"🌉 {oae_ativa.nome}"
-        )
-
-        c1, c2, c3, c4 = (
-            st.columns(4)
-        )
-
-        with c1:
-
-            st.write(
-                "**Código**"
-            )
-
-            st.write(
-                oae_ativa.codigo
-                or
-                "Não informado"
-            )
-
-        with c2:
-
-            st.write(
-                "**Localização**"
-            )
-
-            localizacao = (
-                f"{oae_ativa.municipio or ''}"
-            )
-
-            if oae_ativa.uf:
-
-                if localizacao:
-
-                    localizacao += " - "
-
-                localizacao += (
-                    oae_ativa.uf
-                )
-
-            st.write(
-                localizacao
-                or
-                "Não informada"
-            )
-
-        with c3:
-
-            st.write(
-                "**Rodovia**"
-            )
-
-            st.write(
-                oae_ativa.rodovia
-                or
-                "Não informada"
-            )
-
-        with c4:
-
-            st.write(
-                "**Tipo estrutural**"
-            )
-
-            st.write(
-                oae_ativa.tipo_estrutura
-                or
-                "Não informado"
-            )
-
-        st.divider()
-
-        st.subheader(
-            "⭐ Condição da inspeção mais recente"
-        )
-
-        if inspecao_referencia is None:
-
-            st.info(
-                "Esta OAE ainda não possui inspeções."
-            )
-
-        else:
-
-            componentes_oae = buscar_componentes(
+        notas = None
+        total_componentes = 0
+        total_classificados = 0
+    elif inspecao_referencia is None:
+        notas = None
+        total_componentes = len(
+            buscar_componentes(
                 oae_ativa.id
             )
-
-            total_componentes = len(
-                componentes_oae
+        )
+        total_classificados = 0
+    else:
+        total_componentes = len(
+            buscar_componentes(
+                oae_ativa.id
             )
+        )
 
-            total_classificados = (
-                componentes_classificados(
-                    oae_ativa.id,
-                    inspecao_referencia.id
-                )
-            )
-
-            notas = calcular_notas_finais(
+        total_classificados = (
+            componentes_classificados(
                 oae_ativa.id,
                 inspecao_referencia.id
             )
-
-            if notas is None:
-
-                st.info(
-                    "Nenhum componente foi classificado "
-                    "nesta inspeção."
-                )
-
-            else:
-
-                c1, c2, c3 = (
-                    st.columns(3)
-                )
-
-                with c1:
-
-                    nota = (
-                        notas["estrutural"]
-                    )
-
-                    st.metric(
-                        "Estrutural",
-                        (
-                            nota
-                            if nota is not None
-                            else "—"
-                        )
-                    )
-
-                    if nota is not None:
-
-                        st.caption(
-                            nota_texto(
-                                nota
-                            )
-                        )
-
-                with c2:
-
-                    nota = (
-                        notas["funcional"]
-                    )
-
-                    st.metric(
-                        "Funcional",
-                        (
-                            nota
-                            if nota is not None
-                            else "NA"
-                        )
-                    )
-
-                    if nota is not None:
-
-                        st.caption(
-                            nota_texto(
-                                nota
-                            )
-                        )
-
-                    else:
-
-                        st.caption(
-                            "Não aplicável"
-                        )
-
-                with c3:
-
-                    nota = (
-                        notas["durabilidade"]
-                    )
-
-                    st.metric(
-                        "Durabilidade",
-                        (
-                            nota
-                            if nota is not None
-                            else "—"
-                        )
-                    )
-
-                    if nota is not None:
-
-                        st.caption(
-                            nota_texto(
-                                nota
-                            )
-                        )
-
-                if (
-                    total_componentes > 0
-                    and
-                    total_classificados
-                    == total_componentes
-                ):
-
-                    st.success(
-                        "Todos os componentes cadastrados "
-                        "foram classificados nesta inspeção."
-                    )
-
-                else:
-
-                    st.warning(
-                        "A consolidação é provisória. "
-                        "Existem componentes pendentes."
-                    )
-
-        st.subheader(
-            "📊 Andamento da inspeção"
         )
 
-        if inspecao_referencia is None:
+        notas = calcular_notas_finais(
+            oae_ativa.id,
+            inspecao_referencia.id
+        )
 
-            st.info(
-                "Nenhuma inspeção cadastrada."
-            )
+    mostrar_topo_visao_geral(
+        oae_ativa=oae_ativa,
+        inspecao_referencia=inspecao_referencia,
+        totais=totais,
+        notas=notas,
+        total_componentes=total_componentes,
+        total_classificados=total_classificados,
+        nota_texto_fn=nota_texto,
+    )
 
-        else:
-
-            total_componentes = len(
-                buscar_componentes(
-                    oae_ativa.id
-                )
-            )
-
-            classificados = (
-                componentes_classificados(
-                    oae_ativa.id,
-                    inspecao_referencia.id
-                )
-            )
-
-            pendentes = max(
-                total_componentes
-                - classificados,
-                0
-            )
-
-            percentual = (
-                classificados
-                / total_componentes
-                if total_componentes > 0
-                else 0
-            )
-
-            c1, c2, c3 = (
-                st.columns(3)
-            )
-
-            with c1:
-
-                st.metric(
-                    "Componentes cadastrados",
-                    total_componentes
-                )
-
-            with c2:
-
-                st.metric(
-                    "Classificados",
-                    classificados
-                )
-
-            with c3:
-
-                st.metric(
-                    "Pendentes",
-                    pendentes
-                )
-
-            st.progress(
-                percentual
-            )
-
-            st.caption(
-                f"{percentual * 100:.0f}% dos componentes "
-                f"possuem classificação nesta inspeção."
-            )
-
+    if oae_ativa is not None:
         st.divider()
 
         st.subheader(
