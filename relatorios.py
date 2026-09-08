@@ -47,7 +47,9 @@ try:
         KeepTogether,
         Image as RLImage,
         HRFlowable,
+        Flowable,
     )
+    from reportlab.platypus.tableofcontents import TableOfContents
 
     REPORTLAB_DISPONIVEL = True
 
@@ -1205,6 +1207,163 @@ def _p(valor, estilo, padrao="Não informado"):
     return Paragraph(conteudo, estilo)
 
 
+
+class _MarcadorSumario(Flowable):
+    """
+    Flowable invisível usado para registrar uma seção no sumário do PDF
+    sem alterar o layout visual da página.
+    """
+
+    def __init__(self, titulo, nivel=0, chave=None):
+        super().__init__()
+        self.titulo_sumario = str(titulo)
+        self.nivel_sumario = int(nivel)
+        self.chave_sumario = chave or (
+            "secao_"
+            + re.sub(
+                r"[^a-zA-Z0-9_]+",
+                "_",
+                self.titulo_sumario,
+            ).strip("_")
+        )
+        self.width = 0
+        self.height = 0
+
+    def wrap(self, availWidth, availHeight):
+        return 0, 0
+
+    def draw(self):
+        pass
+
+
+class _DocumentoComSumario(SimpleDocTemplate):
+    """
+    Documento ReportLab com captura automática dos marcadores de seção.
+
+    A capa é a página física 1, mas não recebe numeração no rodapé.
+    Por isso, o número exibido no sumário acompanha a mesma lógica do
+    rodapé do relatório: página física - 1.
+    """
+
+    def afterFlowable(self, flowable):
+        if isinstance(flowable, _MarcadorSumario):
+            titulo = flowable.titulo_sumario
+            nivel = flowable.nivel_sumario
+            chave = flowable.chave_sumario
+
+            pagina_logica = max(self.page - 1, 1)
+
+            try:
+                self.canv.bookmarkPage(chave)
+                self.canv.addOutlineEntry(
+                    titulo,
+                    chave,
+                    level=nivel,
+                    closed=False,
+                )
+            except Exception:
+                pass
+
+            self.notify(
+                "TOCEntry",
+                (
+                    nivel,
+                    titulo,
+                    pagina_logica,
+                    chave,
+                ),
+            )
+
+
+def _marcador_sumario(numero, titulo):
+    return _MarcadorSumario(
+        f"{numero}. {titulo}",
+        nivel=0,
+        chave=f"secao_{numero}_{re.sub(r'[^a-zA-Z0-9_]+', '_', str(titulo)).strip('_')}",
+    )
+
+
+def _sumario_pdf(estilos):
+    """
+    Monta uma página de sumário automático.
+    Os números das páginas são resolvidos pelo multiBuild do ReportLab.
+    """
+    elementos = []
+
+    elementos.append(
+        Paragraph(
+            "SUMÁRIO",
+            ParagraphStyle(
+                "TituloSumario",
+                parent=estilos["titulo"],
+                fontName="Helvetica-Bold",
+                textColor=_cor(COR_AZUL),
+                fontSize=17,
+                leading=20,
+                spaceAfter=4,
+            ),
+        )
+    )
+
+    elementos.append(
+        Paragraph(
+            "Seções do relatório técnico",
+            ParagraphStyle(
+                "SubtituloSumario",
+                parent=estilos["subtitulo"],
+                fontName="Helvetica",
+                textColor=_cor("#667481"),
+                fontSize=8.5,
+                leading=11,
+                spaceAfter=8,
+            ),
+        )
+    )
+
+    elementos.append(
+        HRFlowable(
+            width="100%",
+            thickness=0.7,
+            color=_cor(COR_LINHA),
+        )
+    )
+    elementos.append(Spacer(1, 5 * mm))
+
+    toc = TableOfContents()
+    toc.levelStyles = [
+        ParagraphStyle(
+            "TOCNivel0",
+            parent=estilos["normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=_cor(COR_TEXTO),
+            leftIndent=0,
+            firstLineIndent=0,
+            spaceBefore=2,
+            spaceAfter=2,
+        ),
+        ParagraphStyle(
+            "TOCNivel1",
+            parent=estilos["pequeno"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            textColor=_cor("#5E6C78"),
+            leftIndent=8 * mm,
+            firstLineIndent=0,
+            spaceBefore=1,
+            spaceAfter=1,
+        ),
+    ]
+
+    toc.dotsMinLevel = 0
+
+    elementos.append(toc)
+
+    return elementos
+
+
 def _secao_pdf(numero, titulo, estilos):
     tabela = Table(
         [[
@@ -1321,7 +1480,35 @@ def _cabecalho_rodape_pagina(canvas, doc, nome_oae, tipo_relatorio):
     canvas.setFillColor(_cor("#667481"))
     canvas.setFont("Helvetica", 6.7)
     canvas.drawString(16 * mm, 7.4 * mm, f"{texto(nome_oae)} | {texto(tipo_relatorio)}")
-    canvas.drawRightString(largura - 16 * mm, 7.4 * mm, f"Página {doc.page}")
+    canvas.drawRightString(largura - 16 * mm, 7.4 * mm, f"Página {max(doc.page - 1, 1)}")
+
+    canvas.restoreState()
+
+
+def _pagina_capa(canvas, doc, subtitulo_topo="Sistema de apoio à gestão de obras de arte especiais (OAE)"):
+    canvas.saveState()
+    largura, altura = A4
+
+    canvas.setFillColor(_cor(COR_AZUL))
+    canvas.rect(0, altura - 42 * mm, largura, 42 * mm, fill=1, stroke=0)
+
+    canvas.setFillColor(_cor(COR_AZUL_2))
+    canvas.rect(0, altura - 44 * mm, largura, 2 * mm, fill=1, stroke=0)
+
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica-Bold", 13)
+    canvas.drawString(20 * mm, altura - 20 * mm, "GÊMEO DIGITAL PARA INSPEÇÃO DE PONTES")
+
+    canvas.setFont("Helvetica", 9)
+    canvas.drawString(20 * mm, altura - 28 * mm, subtitulo_topo)
+
+    canvas.setFillColor(_cor("#8A97A3"))
+    canvas.setFont("Helvetica", 7)
+    canvas.drawString(
+        20 * mm,
+        12 * mm,
+        "Documento técnico gerado eletronicamente. Sujeito à validação e conferência do profissional responsável.",
+    )
 
     canvas.restoreState()
 
@@ -1357,6 +1544,156 @@ def _nota_tecnica_pdf(estilos):
     return tabela
 
 
+def _bloco_capa(oae, titulo_relatorio, linhas_info, estilos, classificacao=None):
+    """
+    Monta o conteúdo da capa (abaixo da faixa azul desenhada pelo
+    canvas em _pagina_capa) e termina com um PageBreak, deixando o
+    conteúdo técnico começar sempre em uma página nova.
+    """
+    elementos = [Spacer(1, 26 * mm)]
+
+    elementos.append(
+        Paragraph(
+            f"<font size=19 color='{COR_AZUL}'><b>{escape(titulo_relatorio)}</b></font>",
+            estilos["titulo"],
+        )
+    )
+    elementos.append(Spacer(1, 2 * mm))
+    elementos.append(
+        Paragraph(
+            f"<font size=13 color='{COR_TEXTO}'><b>{escape(nome_oae_exibicao(oae))}</b></font>",
+            estilos["subtitulo"],
+        )
+    )
+    elementos.append(Spacer(1, 10 * mm))
+
+    linhas = []
+
+    for chave, valor in linhas_info:
+        linhas.append(
+            [
+                _p(chave, estilos["pequeno"]),
+                _p(valor, estilos["normal"]),
+            ]
+        )
+
+    tabela = Table(linhas, colWidths=[50 * mm, 110 * mm])
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                ("BACKGROUND", (0, 0), (0, -1), _cor(COR_CINZA)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elementos.append(tabela)
+    elementos.append(Spacer(1, 10 * mm))
+
+    if classificacao is not None:
+        cards = [
+            _card_pdf(
+                "Estrutural",
+                classificacao_com_condicao(classificacao["estrutural"]),
+                estilos,
+                destaque=(classificacao["estrutural"] is not None and int(classificacao["estrutural"]) <= 3),
+            ),
+            _card_pdf(
+                "Funcional",
+                classificacao_com_condicao(classificacao["funcional"]),
+                estilos,
+                destaque=(classificacao["funcional"] is not None and int(classificacao["funcional"]) <= 3),
+            ),
+            _card_pdf(
+                "Durabilidade",
+                classificacao_com_condicao(classificacao["durabilidade"]),
+                estilos,
+                destaque=(classificacao["durabilidade"] is not None and int(classificacao["durabilidade"]) <= 3),
+            ),
+        ]
+
+        tabela_cards = Table([cards], colWidths=[53.3 * mm] * 3)
+        tabela_cards.setStyle(
+            TableStyle(
+                [
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+
+        elementos.append(Paragraph("<b>Classificação da condição</b>", estilos["normal"]))
+        elementos.append(Spacer(1, 2 * mm))
+        elementos.append(tabela_cards)
+        elementos.append(Spacer(1, 10 * mm))
+
+    elementos.append(HRFlowable(width="55%", thickness=0.6, color=_cor(COR_LINHA)))
+    elementos.append(Spacer(1, 3 * mm))
+    elementos.append(
+        Paragraph(
+            f"Relatório gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} "
+            "a partir dos dados armazenados no sistema.",
+            estilos["pequeno"],
+        )
+    )
+    elementos.append(PageBreak())
+
+    return elementos
+
+
+COR_CINZA_ESTAVEL = "#8A97A3"
+
+
+def _cor_severidade_foto(situacao):
+    """
+    Define a cor da faixa lateral do card de foto conforme a
+    situação da anomalia associada. Fotos de vista geral (sem
+    anomalia) usam o azul institucional.
+    """
+    if situacao is None:
+        return COR_AZUL_2
+
+    situacao_lower = situacao.strip().lower()
+
+    if "identificada nesta inspeção" in situacao_lower:
+        return COR_VERMELHO
+    if "evolução" in situacao_lower:
+        return COR_LARANJA
+    if "estáve" in situacao_lower or "estave" in situacao_lower:
+        return COR_CINZA_ESTAVEL
+
+    return COR_AZUL_2
+
+
+def _situacao_anomalia_foto(anomalia, inspecao_id):
+    """
+    Busca a situação da anomalia associada à foto (mesma lógica da
+    seção 7), usada aqui só para decidir a cor do card da foto.
+    """
+    if anomalia is None:
+        return None
+
+    db = SessionLocal()
+    observacao = (
+        db.query(models.ObservacaoAnomalia)
+        .filter(models.ObservacaoAnomalia.anomalia_id == anomalia.id)
+        .filter(models.ObservacaoAnomalia.inspecao_id == inspecao_id)
+        .first()
+    )
+    db.close()
+
+    if observacao is not None:
+        return texto(observacao.situacao_observada, "")
+
+    return "Identificada nesta inspeção"
+
+
 def _imagem_reportlab(caminho, max_largura=78 * mm, max_altura=52 * mm):
     try:
         imagem = RLImage(str(caminho))
@@ -1374,7 +1711,43 @@ def _imagem_reportlab(caminho, max_largura=78 * mm, max_altura=52 * mm):
         return None
 
 
-def _bloco_foto_pdf(foto, numero, componentes, estilos):
+def _imagem_com_moldura(caminho, estilos, largura=78 * mm, altura=48 * mm):
+    """
+    Envolve a imagem (ou o aviso de 'não localizada') em uma célula
+    de altura fixa, com a imagem centralizada dentro. Garante que
+    fotos verticais e horizontais fiquem com a mesma altura de card
+    quando exibidas lado a lado.
+    """
+    imagem = (
+        _imagem_reportlab(caminho, max_largura=largura - 4 * mm, max_altura=altura - 4 * mm)
+        if caminho
+        else None
+    )
+
+    conteudo = imagem if imagem is not None else Paragraph(
+        "Imagem não localizada no armazenamento local.", estilos["pequeno"]
+    )
+
+    moldura = Table(
+        [[conteudo]],
+        colWidths=[largura],
+        rowHeights=[altura],
+    )
+    moldura.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), _cor(COR_CINZA) if imagem is None else colors.white),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    return moldura
+
+
+def _bloco_foto_pdf(foto, numero, componentes, estilos, inspecao_id=None):
     caminho = caminho_foto_existente(foto)
     componente = componentes.get(getattr(foto, "componente_id", None))
 
@@ -1387,35 +1760,41 @@ def _bloco_foto_pdf(foto, numero, componentes, estilos):
     elif getattr(foto, "anomalia_id", None) is not None:
         anomalia = buscar_anomalia_por_id(foto.anomalia_id)
 
-    elementos = [
-        Paragraph(f"<b>Foto {numero:02d}</b>", estilos["legenda_bold"]),
-        Spacer(1, 1.2 * mm),
-    ]
+    situacao = _situacao_anomalia_foto(anomalia, inspecao_id) if anomalia else None
+    cor_faixa = _cor_severidade_foto(situacao)
 
-    imagem = _imagem_reportlab(caminho) if caminho is not None else None
-
-    if imagem is not None:
-        elementos.append(imagem)
-    else:
-        quadro = Table(
-            [[Paragraph("Imagem não localizada no armazenamento local.", estilos["pequeno"])]],
-            colWidths=[78 * mm],
-            rowHeights=[36 * mm],
+    if anomalia is not None:
+        cabecalho = Table(
+            [[
+                Paragraph(f"<b>Foto {numero:02d}</b>", estilos["legenda_bold"]),
+                Paragraph(
+                    f"<font color='{cor_faixa}'><b>ANOMALIA · {escape(texto(anomalia.tipo_anomalia))}</b></font>",
+                    estilos["pequeno"],
+                ),
+            ]],
+            colWidths=[30 * mm, 48 * mm],
         )
-        quadro.setStyle(
+        cabecalho.setStyle(
             TableStyle(
                 [
-                    ("BOX", (0, 0), (-1, -1), 0.5, _cor(COR_LINHA)),
-                    ("BACKGROUND", (0, 0), (-1, -1), _cor(COR_CINZA)),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
                 ]
             )
         )
-        elementos.append(quadro)
+        elementos = [cabecalho, Spacer(1, 1.2 * mm)]
+    else:
+        elementos = [
+            Paragraph(f"<b>Foto {numero:02d}</b> · Vista geral", estilos["legenda_bold"]),
+            Spacer(1, 1.2 * mm),
+        ]
 
+    elementos.append(_imagem_com_moldura(caminho, estilos))
     elementos.append(Spacer(1, 1.8 * mm))
-    elementos.append(_p(foto.identificacao, estilos["legenda"]));
+    elementos.append(_p(foto.identificacao, estilos["legenda"]))
 
     referencias = [
         f"Data: {data_br(foto.data_foto)}",
@@ -1423,27 +1802,95 @@ def _bloco_foto_pdf(foto, numero, componentes, estilos):
     ]
 
     if componente is not None:
-        referencias.append(
-            f"Componente: {limpar_nome_componente(componente.nome)}"
-        )
-
-    if anomalia is not None:
-        referencias.append(
-            f"Anomalia: {texto(anomalia.tipo_anomalia)}"
-        )
+        referencias.append(f"Componente: {limpar_nome_componente(componente.nome)}")
 
     elementos.append(
-        Paragraph(
-            " | ".join(escape(item) for item in referencias),
-            estilos["pequeno"],
-        )
+        Paragraph(" | ".join(escape(item) for item in referencias), estilos["pequeno"])
     )
 
     if texto(foto.observacoes, "") != "":
         elementos.append(Spacer(1, 1 * mm))
         elementos.append(_p(foto.observacoes, estilos["pequeno"], ""))
 
-    return elementos
+    card = Table([[elementos]], colWidths=[84 * mm])
+    card.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
+                ("LINEBEFORE", (0, 0), (0, -1), 2.6, _cor(cor_faixa)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return card
+
+
+def montar_secao_fotos(historia, dados, componentes, estilos, inspecao_id):
+    """
+    Monta a prancha fotográfica dividida em duas seções:
+    'Registro fotográfico geral' e 'Evidências fotográficas de
+    anomalias', cada foto de anomalia com faixa lateral colorida
+    conforme a situação observada na campanha.
+    """
+    fotos = dados["fotografias"]
+
+    if len(fotos) == 0:
+        historia.append(_p("Nenhuma fotografia vinculada à inspeção.", estilos["normal"]))
+        return
+
+    fotos_numeradas = list(enumerate(fotos, start=1))
+
+    def tem_anomalia(item):
+        _, foto = item
+        vinculo = buscar_vinculo_foto_anomalia(foto.id)
+        if vinculo is not None and getattr(vinculo, "anomalia_permanente_id", None):
+            return True
+        return getattr(foto, "anomalia_id", None) is not None
+
+    fotos_anomalia = [item for item in fotos_numeradas if tem_anomalia(item)]
+    fotos_gerais = [item for item in fotos_numeradas if not tem_anomalia(item)]
+
+    def _monta_pranchas(lista):
+        for inicio in range(0, len(lista), 2):
+            par = lista[inicio:inicio + 2]
+            celulas = []
+
+            for numero, foto in par:
+                celulas.append(
+                    _bloco_foto_pdf(foto, numero, componentes, estilos, inspecao_id=inspecao_id)
+                )
+
+            if len(celulas) == 1:
+                celulas.append("")
+
+            linha = Table([celulas], colWidths=[87.5 * mm, 87.5 * mm], hAlign="LEFT")
+            linha.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            historia.append(KeepTogether(linha))
+
+    if fotos_gerais:
+        historia.append(Paragraph("<b>Registro fotográfico geral</b>", estilos["normal"]))
+        historia.append(Spacer(1, 2 * mm))
+        _monta_pranchas(fotos_gerais)
+        historia.append(Spacer(1, 3 * mm))
+
+    if fotos_anomalia:
+        historia.append(Paragraph("<b>Evidências fotográficas de anomalias</b>", estilos["normal"]))
+        historia.append(Spacer(1, 2 * mm))
+        _monta_pranchas(fotos_anomalia)
 
 
 # ============================================================
@@ -1456,7 +1903,7 @@ def gerar_pdf_inspecao(dados):
 
     buffer = BytesIO()
 
-    documento = SimpleDocTemplate(
+    documento = _DocumentoComSumario(
         buffer,
         pagesize=A4,
         rightMargin=17.5 * mm,
@@ -1468,71 +1915,42 @@ def gerar_pdf_inspecao(dados):
     )
 
     estilos = _estilos_pdf()
-    historia = []
     oae = dados["oae"]
     inspecao = dados["inspecao"]
     classificacao = dados["classificacao_geral"]
     componentes = dados["componentes"]
 
-    historia.append(Spacer(1, 3 * mm))
-    historia.append(Paragraph("RELATÓRIO TÉCNICO DE INSPEÇÃO DE OAE", estilos["titulo"]))
-    historia.append(
-        Paragraph(
-            (
-                f"{escape(texto(inspecao.tipo_inspecao))} | "
-                f"{escape(data_br(inspecao.data_inspecao))} | "
-                f"{escape(nome_oae_exibicao(oae))}"
-            ),
-            estilos["subtitulo"],
-        )
-    )
-    historia.append(_nota_tecnica_pdf(estilos))
-    historia.append(Spacer(1, 4 * mm))
-
-    cards = [
-        _card_pdf("Código", texto(oae.codigo), estilos),
-        _card_pdf("Anomalias", len(dados["anomalias"]), estilos, destaque=True),
-        _card_pdf("Fotos", len(dados["fotografias"]), estilos),
-        _card_pdf(
-            "Estrutural",
-            classificacao_com_condicao(classificacao["estrutural"]),
-            estilos,
-            destaque=(classificacao["estrutural"] is not None and int(classificacao["estrutural"]) <= 3),
+    linhas_capa = [
+        ("Código da OAE", oae.codigo),
+        ("Rodovia", oae.rodovia),
+        (
+            "Município / UF",
+            f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
         ),
-        _card_pdf(
-            "Funcional",
-            classificacao_com_condicao(classificacao["funcional"]),
-            estilos,
-            destaque=(classificacao["funcional"] is not None and int(classificacao["funcional"]) <= 3),
-        ),
-        _card_pdf(
-            "Durabilidade",
-            classificacao_com_condicao(classificacao["durabilidade"]),
-            estilos,
-            destaque=(classificacao["durabilidade"] is not None and int(classificacao["durabilidade"]) <= 3),
-        ),
+        ("Modalidade da inspeção", inspecao.tipo_inspecao),
+        ("Data da inspeção", data_br(inspecao.data_inspecao)),
+        ("Responsável técnico", inspecao.responsavel),
+        ("Registro profissional", inspecao.registro_profissional),
     ]
 
-    tabela_cards = Table(
-        [cards[:3], cards[3:]],
-        colWidths=[58.3 * mm, 58.3 * mm, 58.3 * mm],
-        hAlign="LEFT",
+    historia = _bloco_capa(
+        oae,
+        "RELATÓRIO TÉCNICO DE INSPEÇÃO DE OAE",
+        linhas_capa,
+        estilos,
+        classificacao=classificacao,
     )
-    tabela_cards.setStyle(
-        TableStyle(
-            [
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
-    historia.append(tabela_cards)
+
+    # Sumário automático: capa -> sumário -> conteúdo técnico.
+    historia.extend(_sumario_pdf(estilos))
+    historia.append(PageBreak())
+
+    historia.append(_nota_tecnica_pdf(estilos))
     historia.append(Spacer(1, 5 * mm))
 
     secao = 1
 
+    historia.append(_marcador_sumario(secao, "Identificação da OAE"))
     historia.append(_secao_pdf(secao, "Identificação da OAE", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1558,6 +1976,7 @@ def gerar_pdf_inspecao(dados):
     )
     historia.append(Spacer(1, 4 * mm))
 
+    historia.append(_marcador_sumario(secao, "Identificação e objetivo da inspeção"))
     historia.append(_secao_pdf(secao, "Identificação e objetivo da inspeção", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1575,6 +1994,7 @@ def gerar_pdf_inspecao(dados):
     )
     historia.append(Spacer(1, 4 * mm))
 
+    historia.append(_marcador_sumario(secao, "Histórico das inspeções"))
     historia.append(_secao_pdf(secao, "Histórico das inspeções", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1617,6 +2037,7 @@ def gerar_pdf_inspecao(dados):
     historia.append(Spacer(1, 4 * mm))
 
     for titulo_secao, campos in dados["secoes_especificas"]:
+        historia.append(_marcador_sumario(secao, titulo_secao))
         historia.append(_secao_pdf(secao, titulo_secao, estilos))
         secao += 1
         historia.append(Spacer(1, 2 * mm))
@@ -1625,6 +2046,7 @@ def gerar_pdf_inspecao(dados):
         historia.append(_tabela_chave_valor_pdf(linhas, estilos))
         historia.append(Spacer(1, 4 * mm))
 
+    historia.append(_marcador_sumario(secao, "Registro e evolução das anomalias"))
     historia.append(_secao_pdf(secao, "Registro e evolução das anomalias", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1685,6 +2107,7 @@ def gerar_pdf_inspecao(dados):
         historia.append(tabela_anomalias)
 
     historia.append(Spacer(1, 4 * mm))
+    historia.append(_marcador_sumario(secao, "Classificação da condição da OAE"))
     historia.append(_secao_pdf(secao, "Classificação da condição da OAE", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1792,6 +2215,7 @@ def gerar_pdf_inspecao(dados):
         historia.append(tabela_componentes)
 
     historia.append(Spacer(1, 4 * mm))
+    historia.append(_marcador_sumario(secao, "Levantamento fotográfico"))
     historia.append(_secao_pdf(secao, "Levantamento fotográfico", estilos))
     secao += 1
     historia.append(Spacer(1, 2 * mm))
@@ -1808,50 +2232,8 @@ def gerar_pdf_inspecao(dados):
     )
     historia.append(Spacer(1, 3 * mm))
 
-    if len(dados["fotografias"]) == 0:
-        historia.append(_p("Nenhuma fotografia vinculada à inspeção.", estilos["normal"]))
-    else:
-        fotos = dados["fotografias"]
+    montar_secao_fotos(historia, dados, componentes, estilos, inspecao.id)
 
-        for inicio in range(0, len(fotos), 2):
-            celulas = []
-
-            for deslocamento in range(2):
-                indice = inicio + deslocamento
-
-                if indice < len(fotos):
-                    foto = fotos[indice]
-                    bloco = _bloco_foto_pdf(
-                        foto,
-                        indice + 1,
-                        componentes,
-                        estilos,
-                    )
-                    celulas.append(bloco)
-                else:
-                    celulas.append("")
-
-            tabela_fotos = Table(
-                [celulas],
-                colWidths=[86.5 * mm, 86.5 * mm],
-                hAlign="LEFT",
-            )
-            tabela_fotos.setStyle(
-                TableStyle(
-                    [
-                        ("BOX", (0, 0), (-1, -1), 0.35, _cor(COR_LINHA)),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                        ("TOPPADDING", (0, 0), (-1, -1), 4),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ]
-                )
-            )
-            historia.append(KeepTogether(tabela_fotos))
-            historia.append(Spacer(1, 3 * mm))
-
-    # Síntese final sem inventar diagnóstico.
     registro_rotineira = (
         buscar_dados_rotineira(inspecao.id)
         if texto(inspecao.tipo_inspecao, "") == "Rotineira"
@@ -1859,6 +2241,7 @@ def gerar_pdf_inspecao(dados):
     )
 
     if registro_rotineira is not None:
+        historia.append(_marcador_sumario(secao, "Síntese dos registros e recomendações"))
         historia.append(_secao_pdf(secao, "Síntese dos registros e recomendações", estilos))
         secao += 1
         historia.append(Spacer(1, 2 * mm))
@@ -1913,6 +2296,9 @@ def gerar_pdf_inspecao(dados):
         )
     )
 
+    def capa(canvas, doc):
+        _pagina_capa(canvas, doc)
+
     def pagina(canvas, doc):
         _cabecalho_rodape_pagina(
             canvas,
@@ -1921,9 +2307,9 @@ def gerar_pdf_inspecao(dados):
             tipo_relatorio=f"Inspeção {texto(inspecao.tipo_inspecao)}",
         )
 
-    documento.build(
+    documento.multiBuild(
         historia,
-        onFirstPage=pagina,
+        onFirstPage=capa,
         onLaterPages=pagina,
     )
 
@@ -1941,7 +2327,7 @@ def gerar_pdf_consolidado(dados):
 
     buffer = BytesIO()
 
-    documento = SimpleDocTemplate(
+    documento = _DocumentoComSumario(
         buffer,
         pagesize=A4,
         rightMargin=17.5 * mm,
@@ -1953,15 +2339,36 @@ def gerar_pdf_consolidado(dados):
     )
 
     estilos = _estilos_pdf()
-    historia = []
     oae = dados["oae"]
 
-    historia.append(Spacer(1, 3 * mm))
-    historia.append(Paragraph("RELATÓRIO CONSOLIDADO DA OAE", estilos["titulo"]))
-    historia.append(Paragraph(escape(nome_oae_exibicao(oae)), estilos["subtitulo"]))
+    linhas_capa = [
+        ("Código da OAE", oae.codigo),
+        ("Rodovia", oae.rodovia),
+        (
+            "Município / UF",
+            f"{texto(oae.municipio, '')}{' / ' if oae.municipio and oae.uf else ''}{texto(oae.uf, '')}",
+        ),
+        ("Tipo de estrutura", oae.tipo_estrutura),
+        ("Ano de construção", oae.ano_construcao),
+        ("Inspeções registradas", len(dados["inspecoes"])),
+    ]
+
+    historia = _bloco_capa(
+        oae,
+        "RELATÓRIO CONSOLIDADO DA OAE",
+        linhas_capa,
+        estilos,
+        classificacao=None,
+    )
+
+    # Sumário automático: capa -> sumário -> conteúdo técnico.
+    historia.extend(_sumario_pdf(estilos))
+    historia.append(PageBreak())
+
     historia.append(_nota_tecnica_pdf(estilos))
     historia.append(Spacer(1, 5 * mm))
 
+    historia.append(_marcador_sumario(1, "Identificação da OAE"))
     historia.append(_secao_pdf(1, "Identificação da OAE", estilos))
     historia.append(Spacer(1, 2 * mm))
     historia.append(
@@ -1983,6 +2390,7 @@ def gerar_pdf_consolidado(dados):
     )
     historia.append(Spacer(1, 4 * mm))
 
+    historia.append(_marcador_sumario(2, "Histórico de inspeções e classificações"))
     historia.append(_secao_pdf(2, "Histórico de inspeções e classificações", estilos))
     historia.append(Spacer(1, 2 * mm))
 
@@ -2036,6 +2444,7 @@ def gerar_pdf_consolidado(dados):
     historia.append(tabela)
     historia.append(Spacer(1, 4 * mm))
 
+    historia.append(_marcador_sumario(3, "Inventário atual de anomalias"))
     historia.append(_secao_pdf(3, "Inventário atual de anomalias", estilos))
     historia.append(Spacer(1, 2 * mm))
 
@@ -2105,6 +2514,9 @@ def gerar_pdf_consolidado(dados):
         )
     )
 
+    def capa(canvas, doc):
+        _pagina_capa(canvas, doc)
+
     def pagina(canvas, doc):
         _cabecalho_rodape_pagina(
             canvas,
@@ -2113,9 +2525,9 @@ def gerar_pdf_consolidado(dados):
             tipo_relatorio="Relatório consolidado",
         )
 
-    documento.build(
+    documento.multiBuild(
         historia,
-        onFirstPage=pagina,
+        onFirstPage=capa,
         onLaterPages=pagina,
     )
 
@@ -2211,7 +2623,8 @@ def mostrar_preview_inspecao(dados):
         st.markdown("#### Levantamento fotográfico")
         st.caption(
             "O PDF técnico incluirá as imagens disponíveis no armazenamento local, "
-            "organizadas em pranchas com duas fotografias por linha."
+            "organizadas em pranchas com duas fotografias por linha, separadas em "
+            "'vista geral' e 'evidências de anomalias'."
         )
 
 

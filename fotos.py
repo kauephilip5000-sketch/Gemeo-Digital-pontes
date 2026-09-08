@@ -344,6 +344,157 @@ def buscar_vinculo_fotografia(
     }
 
 
+def vincular_fotografia_existente_a_anomalia(
+    fotografia_id,
+    componente_id,
+    anomalia_id,
+    observacao_id,
+):
+    """
+    Vincula uma fotografia já cadastrada a uma anomalia permanente
+    e à observação temporal correspondente.
+
+    Também sincroniza o componente e o tipo do registro fotográfico
+    para evitar informações contraditórias na interface.
+    """
+
+    db = SessionLocal()
+
+    try:
+
+        fotografia = (
+            db.query(models.Fotografia)
+            .filter(
+                models.Fotografia.id
+                == fotografia_id
+            )
+            .first()
+        )
+
+        if fotografia is None:
+
+            db.close()
+            return (
+                False,
+                "Fotografia não localizada."
+            )
+
+        vinculo_existente = (
+            db.query(
+                models.VinculoFotografiaAnomalia
+            )
+            .filter(
+                models.VinculoFotografiaAnomalia.fotografia_id
+                == fotografia_id
+            )
+            .first()
+        )
+
+        if vinculo_existente is not None:
+
+            db.close()
+            return (
+                False,
+                "Esta fotografia já possui vínculo com uma anomalia."
+            )
+
+        anomalia = (
+            db.query(models.AnomaliaPermanente)
+            .filter(
+                models.AnomaliaPermanente.id
+                == anomalia_id
+            )
+            .first()
+        )
+
+        observacao = (
+            db.query(models.ObservacaoAnomalia)
+            .filter(
+                models.ObservacaoAnomalia.id
+                == observacao_id
+            )
+            .first()
+        )
+
+        if (
+            anomalia is None
+            or
+            observacao is None
+        ):
+
+            db.close()
+            return (
+                False,
+                "A anomalia ou a observação selecionada não foi localizada."
+            )
+
+        if observacao.anomalia_id != anomalia.id:
+
+            db.close()
+            return (
+                False,
+                "A observação selecionada não pertence à anomalia informada."
+            )
+
+        if fotografia.inspecao_id != observacao.inspecao_id:
+
+            db.close()
+            return (
+                False,
+                "A fotografia e a observação pertencem a inspeções diferentes."
+            )
+
+        if anomalia.componente_id != componente_id:
+
+            db.close()
+            return (
+                False,
+                "O componente selecionado não corresponde à anomalia."
+            )
+
+        novo_vinculo = (
+            models.VinculoFotografiaAnomalia(
+                fotografia_id=
+                    fotografia.id,
+                anomalia_permanente_id=
+                    anomalia.id,
+                observacao_anomalia_id=
+                    observacao.id
+            )
+        )
+
+        fotografia.componente_id = (
+            componente_id
+        )
+
+        fotografia.tipo_registro = (
+            "Anomalia"
+        )
+
+        db.add(
+            novo_vinculo
+        )
+
+        db.commit()
+
+        db.close()
+
+        return (
+            True,
+            "Fotografia vinculada à anomalia com sucesso."
+        )
+
+    except Exception as erro:
+
+        db.rollback()
+        db.close()
+
+        return (
+            False,
+            f"Não foi possível criar o vínculo. Detalhe: {erro}"
+        )
+
+
 def buscar_nome_componente(
     componente_id
 ):
@@ -741,7 +892,20 @@ def mostrar_modulo_fotografias(
         tipo_registro = st.selectbox(
             "Tipo de registro",
             opcoes_tipo_registro,
-            index=indice_tipo_registro
+            index=indice_tipo_registro,
+            disabled=(
+                escopo_fotografia
+                == "Anomalia observada nesta inspeção"
+            ),
+            help=(
+                "Quando a fotografia é vinculada a uma anomalia, "
+                "o tipo de registro é definido automaticamente como 'Anomalia'."
+                if (
+                    escopo_fotografia
+                    == "Anomalia observada nesta inspeção"
+                )
+                else None
+            )
         )
 
         identificacao = st.text_input(
@@ -1163,6 +1327,211 @@ def mostrar_modulo_fotografias(
                         "Registro geral, sem vínculo com "
                         "anomalia permanente."
                     )
+
+                    st.markdown(
+                        "#### 🔗 Vincular esta fotografia a uma anomalia"
+                    )
+
+                    st.caption(
+                        "Use esta opção quando a fotografia já foi cadastrada, "
+                        "mas deveria estar associada a uma anomalia observada "
+                        "nesta mesma inspeção."
+                    )
+
+                    componentes_vinculo = (
+                        _buscar_componentes_ordenados(
+                            oae_ativa.id
+                        )
+                    )
+
+                    mapa_componentes_vinculo = {
+                        item.id: item
+                        for item in componentes_vinculo
+                    }
+
+                    mapa_rotulos_componentes_vinculo = {
+                        item.id: (
+                            f"{numero:02d} • "
+                            f"{item.nome} • "
+                            f"{item.categoria or 'Categoria não informada'}"
+                        )
+                        for numero, item in enumerate(
+                            componentes_vinculo,
+                            start=1
+                        )
+                    }
+
+                    componente_padrao_id = (
+                        foto.componente_id
+                        if (
+                            foto.componente_id
+                            in mapa_componentes_vinculo
+                        )
+                        else None
+                    )
+
+                    opcoes_componentes_vinculo = list(
+                        mapa_componentes_vinculo.keys()
+                    )
+
+                    indice_componente_vinculo = None
+
+                    if (
+                        componente_padrao_id is not None
+                        and
+                        componente_padrao_id
+                        in opcoes_componentes_vinculo
+                    ):
+
+                        indice_componente_vinculo = (
+                            opcoes_componentes_vinculo.index(
+                                componente_padrao_id
+                            )
+                        )
+
+                    componente_vinculo_id = st.selectbox(
+                        "Componente da anomalia",
+                        options=opcoes_componentes_vinculo,
+                        index=indice_componente_vinculo,
+                        placeholder="Selecione um componente...",
+                        format_func=lambda valor: (
+                            mapa_rotulos_componentes_vinculo[
+                                valor
+                            ]
+                        ),
+                        key=f"vincular_foto_componente_{foto.id}"
+                    )
+
+                    if componente_vinculo_id is not None:
+
+                        observacoes_para_vinculo = (
+                            buscar_observacoes_anomalias(
+                                oae_id=oae_ativa.id,
+                                inspecao_id=inspecao_ativa.id,
+                                componente_id=
+                                    componente_vinculo_id
+                            )
+                        )
+
+                    else:
+
+                        observacoes_para_vinculo = []
+
+                    if len(observacoes_para_vinculo) == 0:
+
+                        st.caption(
+                            "Nenhuma anomalia com observação registrada "
+                            "nesta inspeção foi encontrada para o componente "
+                            "selecionado."
+                        )
+
+                    else:
+
+                        mapa_anomalias_vinculo = {}
+
+                        for item_vinculo in observacoes_para_vinculo:
+
+                            anomalia_vinculo = (
+                                item_vinculo[
+                                    "anomalia"
+                                ]
+                            )
+
+                            observacao_vinculo = (
+                                item_vinculo[
+                                    "observacao"
+                                ]
+                            )
+
+                            rotulo_anomalia_vinculo = (
+                                f"{codigo_visual_anomalia(oae_ativa.id, anomalia_vinculo.id)} - "
+                                f"{anomalia_vinculo.tipo_anomalia} - "
+                                f"{anomalia_vinculo.localizacao_referencia}"
+                            )
+
+                            mapa_anomalias_vinculo[
+                                rotulo_anomalia_vinculo
+                            ] = {
+                                "anomalia":
+                                    anomalia_vinculo,
+                                "observacao":
+                                    observacao_vinculo
+                            }
+
+                        anomalia_vinculo_texto = (
+                            st.selectbox(
+                                "Anomalia observada nesta inspeção",
+                                options=list(
+                                    mapa_anomalias_vinculo.keys()
+                                ),
+                                key=f"vincular_foto_anomalia_{foto.id}"
+                            )
+                        )
+
+                        item_vinculo_selecionado = (
+                            mapa_anomalias_vinculo[
+                                anomalia_vinculo_texto
+                            ]
+                        )
+
+                        anomalia_vinculo_selecionada = (
+                            item_vinculo_selecionado[
+                                "anomalia"
+                            ]
+                        )
+
+                        observacao_vinculo_selecionada = (
+                            item_vinculo_selecionado[
+                                "observacao"
+                            ]
+                        )
+
+                        st.write(
+                            "**Vínculo que será criado:**",
+                            (
+                                f"{codigo_visual_anomalia(oae_ativa.id, anomalia_vinculo_selecionada.id)} "
+                                f"— {anomalia_vinculo_selecionada.tipo_anomalia}"
+                            )
+                        )
+
+                        confirmar_vinculo = st.checkbox(
+                            "Confirmo o vínculo desta fotografia com a anomalia selecionada",
+                            key=f"confirmar_vinculo_foto_{foto.id}"
+                        )
+
+                        if st.button(
+                            "🔗 Vincular fotografia à anomalia",
+                            key=f"vincular_foto_{foto.id}",
+                            type="primary",
+                            disabled=not confirmar_vinculo
+                        ):
+
+                            sucesso_vinculo, mensagem_vinculo = (
+                                vincular_fotografia_existente_a_anomalia(
+                                    fotografia_id=
+                                        foto.id,
+                                    componente_id=
+                                        componente_vinculo_id,
+                                    anomalia_id=
+                                        anomalia_vinculo_selecionada.id,
+                                    observacao_id=
+                                        observacao_vinculo_selecionada.id,
+                                )
+                            )
+
+                            if sucesso_vinculo:
+
+                                st.success(
+                                    mensagem_vinculo
+                                )
+
+                                st.rerun()
+
+                            else:
+
+                                st.error(
+                                    mensagem_vinculo
+                                )
 
             else:
 

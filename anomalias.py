@@ -1,4 +1,5 @@
 import streamlit as st
+from pathlib import Path
 
 from database import SessionLocal
 import models
@@ -371,6 +372,40 @@ def buscar_inspecao_por_id(
     db.close()
 
     return inspecao
+
+
+
+def buscar_fotografias_observacao(
+    observacao_id,
+):
+    """
+    Retorna as fotografias vinculadas a uma observação temporal
+    específica de uma anomalia.
+    """
+
+    db = SessionLocal()
+
+    fotografias = (
+        db.query(models.Fotografia)
+        .join(
+            models.VinculoFotografiaAnomalia,
+            models.VinculoFotografiaAnomalia.fotografia_id
+            == models.Fotografia.id
+        )
+        .filter(
+            models.VinculoFotografiaAnomalia.observacao_anomalia_id
+            == observacao_id
+        )
+        .order_by(
+            models.Fotografia.data_foto.asc(),
+            models.Fotografia.id.asc(),
+        )
+        .all()
+    )
+
+    db.close()
+
+    return fotografias
 
 
 def mostrar_visao_geral_anomalias_oae(
@@ -1487,10 +1522,187 @@ def mostrar_modulo_anomalias(
 
                 else:
 
+                    st.markdown(
+                        "#### 📋 Histórico das observações"
+                    )
+
                     st.dataframe(
                         dados_observacoes,
-                        width="stretch"
+                        width="stretch",
+                        hide_index=True
                     )
+
+                    st.markdown(
+                        "#### 📷 Evidências fotográficas por inspeção"
+                    )
+
+                    possui_alguma_foto = False
+
+                    for observacao in observacoes_anomalia:
+
+                        inspecao_observacao = buscar_inspecao_por_id(
+                            observacao.inspecao_id
+                        )
+
+                        fotografias_observacao = (
+                            buscar_fotografias_observacao(
+                                observacao.id
+                            )
+                        )
+
+                        if len(fotografias_observacao) == 0:
+                            continue
+
+                        possui_alguma_foto = True
+
+                        numero_inspecao_observacao = (
+                            numero_visual_inspecao(
+                                oae_ativa.id,
+                                observacao.inspecao_id,
+                            )
+                        )
+
+                        if inspecao_observacao is not None:
+
+                            titulo_inspecao = (
+                                f"Inspeção {numero_inspecao_observacao} - "
+                                f"{inspecao_observacao.tipo_inspecao} - "
+                                f"{inspecao_observacao.data_inspecao.strftime('%d/%m/%Y')}"
+                            )
+
+                        else:
+
+                            titulo_inspecao = (
+                                f"Inspeção {numero_inspecao_observacao}"
+                            )
+
+                        with st.expander(
+                            f"📷 {titulo_inspecao} "
+                            f"({len(fotografias_observacao)} foto(s))",
+                            expanded=True
+                        ):
+
+                            st.write(
+                                "**Situação observada:**",
+                                (
+                                    observacao.situacao_observada
+                                    or "Não informada"
+                                )
+                            )
+
+                            if (
+                                observacao.abertura_fissura_mm
+                                is not None
+                            ):
+
+                                st.write(
+                                    "**Abertura registrada:**",
+                                    f"{observacao.abertura_fissura_mm:.2f} mm"
+                                )
+
+                            if (
+                                observacao.extensao_anomalia_cm
+                                is not None
+                            ):
+
+                                st.write(
+                                    "**Extensão / dimensão registrada:**",
+                                    f"{observacao.extensao_anomalia_cm:.1f} cm"
+                                )
+
+                            if observacao.descricao:
+
+                                st.write(
+                                    "**Descrição da observação:**",
+                                    observacao.descricao
+                                )
+
+                            quantidade_colunas = min(
+                                3,
+                                len(fotografias_observacao)
+                            )
+
+                            colunas_fotos = st.columns(
+                                quantidade_colunas
+                            )
+
+                            for indice, foto in enumerate(
+                                fotografias_observacao
+                            ):
+
+                                coluna = colunas_fotos[
+                                    indice % quantidade_colunas
+                                ]
+
+                                numero_foto = (
+                                    numero_visual_fotografia(
+                                        oae_ativa.id,
+                                        observacao.inspecao_id,
+                                        foto.id,
+                                    )
+                                )
+
+                                caminho_foto = Path(
+                                    foto.caminho_arquivo
+                                )
+
+                                with coluna:
+
+                                    legenda = (
+                                        f"Foto {numero_foto:02d} - "
+                                        f"{foto.identificacao}"
+                                        if isinstance(
+                                            numero_foto,
+                                            int
+                                        )
+                                        else foto.identificacao
+                                    )
+
+                                    if caminho_foto.exists():
+
+                                        try:
+
+                                            st.image(
+                                                str(caminho_foto),
+                                                caption=legenda,
+                                                width="stretch"
+                                            )
+
+                                        except Exception:
+
+                                            st.warning(
+                                                "Não foi possível exibir "
+                                                "esta fotografia."
+                                            )
+
+                                    else:
+
+                                        st.warning(
+                                            "Arquivo da fotografia "
+                                            "não encontrado."
+                                        )
+
+                                    st.caption(
+                                        f"Tipo: "
+                                        f"{foto.tipo_registro or 'Não informado'}"
+                                    )
+
+                                    if foto.observacoes:
+
+                                        st.caption(
+                                            f"Observação da foto: "
+                                            f"{foto.observacoes}"
+                                        )
+
+                    if not possui_alguma_foto:
+
+                        st.info(
+                            "Ainda não existem fotografias vinculadas "
+                            "às observações desta anomalia. "
+                            "Use o módulo 📷 Fotografias e selecione "
+                            "'Anomalia observada nesta inspeção' "
+                            "para adicionar evidências fotográficas."
+                        )
 
     mostrar_visao_geral_anomalias_oae(
         oae_ativa=oae_ativa,
