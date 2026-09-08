@@ -69,7 +69,7 @@ def aplicar_estilo_global():
 
         [data-testid="stMainBlockContainer"] {
             max-width: 1540px;
-            padding-top: 1.35rem;
+            padding-top: 3.25rem;
             padding-bottom: 3rem;
         }
 
@@ -162,7 +162,7 @@ def aplicar_estilo_global():
             align-items: center;
             gap: 10px;
             color: #0B3C5D;
-            margin: .05rem 0 .9rem 0;
+            margin: .15rem 0 1rem 0;
         }
 
         .gd-page-brand-icon {
@@ -437,6 +437,129 @@ def aplicar_estilo_global():
             color: #17324A !important;
             fill: #17324A !important;
             stroke: #17324A !important;
+        }
+
+
+
+        /* =====================================================
+           FORMULÁRIOS E CAMPOS — MAIOR CONTRASTE VISUAL
+           Aplicado somente à área principal, não à sidebar.
+           ===================================================== */
+
+        /* Formulários com superfície branca e separação do fundo */
+        [data-testid="stMain"] [data-testid="stForm"],
+        [data-testid="stMainBlockContainer"] [data-testid="stForm"] {
+            background: #FFFFFF !important;
+            border: 1px solid #D2DCE5 !important;
+            border-radius: 16px !important;
+            padding: 1rem 1.15rem 1.15rem 1.15rem !important;
+            box-shadow: 0 7px 22px rgba(11, 60, 93, 0.045) !important;
+        }
+
+        /* Labels mais legíveis */
+        [data-testid="stMain"] label,
+        [data-testid="stMainBlockContainer"] label {
+            color: #22384A !important;
+            font-weight: 600 !important;
+        }
+
+        /* Text input e number input */
+        [data-testid="stMain"] div[data-baseweb="input"] > div,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="input"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #C7D2DC !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(11, 60, 93, 0.03) !important;
+        }
+
+        /* Selectbox da área principal */
+        [data-testid="stMain"] div[data-baseweb="select"] > div,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="select"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #C7D2DC !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(11, 60, 93, 0.03) !important;
+        }
+
+        /* Textarea */
+        [data-testid="stMain"] div[data-baseweb="textarea"] > div,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="textarea"] > div {
+            background: #FFFFFF !important;
+            border: 1.5px solid #C7D2DC !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(11, 60, 93, 0.03) !important;
+        }
+
+        /* Texto digitado nos campos */
+        [data-testid="stMain"] div[data-baseweb="input"] input,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="input"] input,
+        [data-testid="stMain"] div[data-baseweb="textarea"] textarea,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="textarea"] textarea,
+        [data-testid="stMain"] div[data-baseweb="select"] span,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="select"] span {
+            color: #17324A !important;
+            -webkit-text-fill-color: #17324A !important;
+        }
+
+        /* Placeholder */
+        [data-testid="stMain"] input::placeholder,
+        [data-testid="stMainBlockContainer"] input::placeholder,
+        [data-testid="stMain"] textarea::placeholder,
+        [data-testid="stMainBlockContainer"] textarea::placeholder {
+            color: #8794A0 !important;
+            opacity: 1 !important;
+        }
+
+        /* Foco — destaque laranja discreto */
+        [data-testid="stMain"] div[data-baseweb="input"] > div:focus-within,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="input"] > div:focus-within,
+        [data-testid="stMain"] div[data-baseweb="select"] > div:focus-within,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="select"] > div:focus-within,
+        [data-testid="stMain"] div[data-baseweb="textarea"] > div:focus-within,
+        [data-testid="stMainBlockContainer"] div[data-baseweb="textarea"] > div:focus-within {
+            border-color: #FF6B35 !important;
+            box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.14) !important;
+        }
+
+        /* Uploader com área branca e borda pontilhada */
+        [data-testid="stMain"] [data-testid="stFileUploader"] section,
+        [data-testid="stMainBlockContainer"] [data-testid="stFileUploader"] section {
+            background: #FFFFFF !important;
+            border: 1.5px dashed #BFCBD6 !important;
+            border-radius: 12px !important;
+        }
+
+        /* Fundo de widgets numéricos e controles auxiliares */
+        [data-testid="stMain"] [data-testid="stNumberInput"] button,
+        [data-testid="stMainBlockContainer"] [data-testid="stNumberInput"] button {
+            background: #F7F9FB !important;
+            border-color: #C7D2DC !important;
+            color: #17324A !important;
+        }
+
+        /* Botões dos formulários */
+        [data-testid="stMain"] [data-testid="stFormSubmitButton"] > button,
+        [data-testid="stMainBlockContainer"] [data-testid="stFormSubmitButton"] > button {
+            background: #FFFFFF !important;
+            color: #17324A !important;
+            border: 1.5px solid #BCC9D4 !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            transition: all .15s ease !important;
+        }
+
+        [data-testid="stMain"] [data-testid="stFormSubmitButton"] > button:hover,
+        [data-testid="stMainBlockContainer"] [data-testid="stFormSubmitButton"] > button:hover {
+            color: #FF6B35 !important;
+            border-color: #FF6B35 !important;
+            background: #FFF8F5 !important;
+        }
+
+        /* Radio buttons: melhora contraste sem alterar cor semântica */
+        [data-testid="stMain"] [data-testid="stRadio"] label,
+        [data-testid="stMainBlockContainer"] [data-testid="stRadio"] label {
+            color: #263B4B !important;
+            font-weight: 500 !important;
         }
 
 </style>
