@@ -64,7 +64,7 @@ def limpar_nome_componente_visual(valor):
 # ============================================================
 
 st.set_page_config(
-    page_title="Gêmeo Digital - Pontes",
+    page_title="Ferramenta Web para Inspeções de Pontes",
     page_icon="assets/page_icon.png",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1347,7 +1347,7 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "TCC 2 • Gêmeo Digital para Pontes"
+        "TCC 2 • Ferramenta Web para Inspeções de Pontes"
     )
 
 
