@@ -1786,6 +1786,8 @@ elif pagina == "🌉 Dados da OAE":
                 st.write(
                     "**Ano de construção:**",
                     oae_ativa.ano_construcao
+                    if oae_ativa.ano_construcao is not None
+                    else "Não informado"
                 )
 
                 st.write(
@@ -1874,11 +1876,15 @@ elif pagina == "🌉 Dados da OAE":
                     ]
                 )
 
+                # value=None permite manter o ano não informado
+                # sem usar 1800/2000 como datas fictícias.
                 ano = st.number_input(
                     "Ano de construção",
                     min_value=1800,
                     max_value=2100,
-                    step=1
+                    value=None,
+                    step=1,
+                    placeholder="Não informado"
                 )
 
             with c2:
@@ -2111,15 +2117,19 @@ elif pagina == "🌉 Dados da OAE":
                         key="editar_oae_uf"
                     )
 
+                    # Preserva anos existentes e deixa vazio quando
+                    # o banco contém NULL (ano desconhecido).
                     editar_ano = st.number_input(
                         "Ano de construção",
                         min_value=1800,
                         max_value=2100,
                         step=1,
-                        value=int(
-                            oae_ativa.ano_construcao
-                            or 2000
-                        )
+                        value=(
+                            int(oae_ativa.ano_construcao)
+                            if oae_ativa.ano_construcao is not None
+                            else None
+                        ),
+                        placeholder="Não informado"
                     )
 
                 with c2:
